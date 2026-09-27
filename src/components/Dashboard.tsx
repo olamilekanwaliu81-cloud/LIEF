@@ -41,7 +41,7 @@ export default function Dashboard() {
           />
         </Card>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
             <ScoreCard average={average(child)} attendance={attendanceRate(child)} subjects={child.scores.length} hasAttendance={child.attendance.length > 0} />
 
@@ -175,7 +175,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {child.sampleData && (
+      {child.sampleData && hasScores && (
         <Callout t="caution" title="Parent-entered data">
           {firstName}'s results here were added by you, not uploaded by a school. Once their teacher joins LEIF, official scores will replace them.
         </Callout>

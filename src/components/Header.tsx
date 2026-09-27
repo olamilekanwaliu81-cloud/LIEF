@@ -51,6 +51,7 @@ export function ChildSwitcher({ variant = 'header' }: { variant?: 'header' | 'si
       <button
         onClick={() => setOpen(v => !v)}
         aria-haspopup="menu"
+        aria-label={`Viewing ${child.name}. Switch child`}
         aria-expanded={open}
         className={isSidebar
           ? 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all'

@@ -1,10 +1,11 @@
+import { Suspense } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router'
 import { BarChart2, Bell, Calendar, ClipboardList, LayoutDashboard, LogOut, Megaphone, Settings, Users } from 'lucide-react'
 import { useNotifications, useStore, useTeacher } from '../lib/store'
 import { initials } from '../lib/format'
 import { BellButton } from './Header'
 import { SidebarLink } from './ParentLayout'
-import { Logo, display } from './ui'
+import { Logo, PageLoader, display } from './ui'
 
 export const teacherTabs: { id: string; label: string; short: string; Icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', short: 'Overview', Icon: LayoutDashboard },
@@ -69,6 +70,7 @@ export default function TeacherLayout() {
                 <NavLink
                   key={id}
                   to={`/teacher/${id}`}
+                  aria-label={short}
                   className="flex items-center gap-1.5 px-3 py-3 text-xs font-bold whitespace-nowrap border-b-2 transition-all"
                   style={({ isActive }) => ({ ...display, color: isActive ? 'var(--accent)' : 'var(--muted-foreground)', borderBottomColor: isActive ? 'var(--accent)' : 'transparent' })}
                 >
@@ -81,7 +83,7 @@ export default function TeacherLayout() {
 
         <main className="flex-1 pb-16">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 pt-5 lg:pt-10">
-            <Outlet />
+            <Suspense fallback={<PageLoader />}><Outlet /></Suspense>
           </div>
         </main>
       </div>

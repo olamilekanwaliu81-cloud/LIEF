@@ -67,7 +67,7 @@ export default function Support() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3 space-y-5">
           <div className="rounded-xl p-4" style={{ background: t.bg, border: `1px solid ${t.border}` }}>
             <div className="flex items-start gap-3">

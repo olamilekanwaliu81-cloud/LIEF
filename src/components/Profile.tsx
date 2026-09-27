@@ -47,7 +47,7 @@ export default function Profile() {
     <div className="space-y-6">
       <PageHeader title="Profile" subtitle={`Manage ${firstName}'s academic profile and privacy settings.`} />
 
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <div className="space-y-6">
           {/* Child profile card */}
           <div className="rounded-2xl p-5" style={{ background: 'var(--hero)' }}>

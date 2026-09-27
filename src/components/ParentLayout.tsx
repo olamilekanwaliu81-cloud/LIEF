@@ -1,15 +1,16 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router'
 import { Bell, HelpCircle, LogOut } from 'lucide-react'
 import { useNotifications, useStore } from '../lib/store'
 import Header, { ChildSwitcher, HelpModal } from './Header'
 import NavBar, { parentTabs } from './NavBar'
-import { Logo, display } from './ui'
+import { Logo, PageLoader, display } from './ui'
 
 export function SidebarLink({ to, label, Icon, badge }: { to: string; label: string; Icon: React.ElementType; badge?: number }) {
   return (
     <NavLink
       to={to}
+      aria-label={badge ? `${label}, ${badge} unread` : label}
       className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all"
       style={({ isActive }) => ({
         ...display,
@@ -69,7 +70,7 @@ export default function ParentLayout() {
         <Header />
         <main className="flex-1 pb-28 lg:pb-12">
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 pt-5 lg:pt-10">
-            <Outlet />
+            <Suspense fallback={<PageLoader />}><Outlet /></Suspense>
           </div>
         </main>
         <NavBar />

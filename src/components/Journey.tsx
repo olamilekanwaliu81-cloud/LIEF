@@ -4,7 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { LineChart as LineIcon, Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import { useParent } from '../lib/store'
 import { TARGET_SCORE, attendanceRate, shortSubject, subjectSummaries } from '../lib/academics'
-import { Card, Chip, EmptyState, PageHeader, Pill, Segmented, display } from './ui'
+import { Callout, Card, Chip, EmptyState, PageHeader, Pill, Segmented, display } from './ui'
 
 const PALETTE = ['#1ABF96', '#1E90D4', '#7B5EA7', '#E97B2E', '#D6455D', '#C9A227', '#2FA4A9', '#8C6D52']
 const OVERALL_COLOR = '#E97B2E'
@@ -33,7 +33,9 @@ export default function Journey() {
   const summaries = subjectSummaries(child)
   const first = child.history[0]
   const last = child.history[child.history.length - 1]
-  const range = first && last ? `${first.label} ${first.date.slice(0, 4)} – ${last.label} ${last.date.slice(0, 4)}` : ''
+  const range = !first ? ''
+    : first === last ? `Since ${first.label} ${first.date.slice(0, 4)}`
+    : `${first.label} ${first.date.slice(0, 4)} – ${last.label} ${last.date.slice(0, 4)}`
 
   if (child.history.length === 0) {
     return (
@@ -114,17 +116,23 @@ export default function Journey() {
             </p>
           </Card>
 
+          {child.history.length < 2 ? (
+            <Callout t="info" icon={<LineIcon size={16} />} title="One result so far">
+              Change over time appears once there's a second set of results — from a teacher upload or a result you add next month.
+            </Callout>
+          ) : (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <InsightCard label="Best month" value={best.label} note={`Average reached ${best.overall}`} positive />
             <InsightCard label="Most improved" value={shortSubject(mostImproved.subject)} note={mostImproved.change > 0 ? `+${mostImproved.change} pts since ${first.label}` : 'No gains yet'} positive={mostImproved.change > 0} />
             <InsightCard label="Needs watch" value={shortSubject(watch.name)} note={`Currently ${watch.score}/100`} positive={watch.score >= 65} />
             <InsightCard label="Attendance" value={child.attendance.length ? `${attendance}%` : '—'} note={attendance >= 90 ? 'Consistent attendance' : child.attendance.length ? 'Some days missed' : 'Not recorded yet'} positive={attendance >= 90} />
           </div>
+          )}
         </>
       )}
 
       {view === 'subjects' && (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {summaries.map(s => (
             <Card key={s.name} className="p-4">
               <div className="flex items-center justify-between mb-2 gap-2">

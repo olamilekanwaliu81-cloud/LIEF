@@ -74,6 +74,14 @@ export function Spinner({ size = 16 }: { size?: number }) {
   )
 }
 
+export function PageLoader() {
+  return (
+    <div className="min-h-[40vh] flex items-center justify-center" role="status" aria-label="Loading">
+      <span className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} />
+    </div>
+  )
+}
+
 // ── Form fields ──────────────────────────────────────────────────────────
 interface FieldProps {
   label: string

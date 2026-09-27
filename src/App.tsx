@@ -1,31 +1,40 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { ThemeProvider } from './context/ThemeContext'
 import { StoreProvider, useStore } from './lib/store'
 import type { Role } from './lib/types'
-import { ToastProvider } from './components/ui'
+import { PageLoader, ToastProvider } from './components/ui'
 import Landing from './components/Landing'
 import SignIn from './components/SignIn'
 import SignUp from './components/SignUp'
 import TeacherSignIn from './components/TeacherSignIn'
 import TeacherSignUp from './components/TeacherSignUp'
 import LearnerSignIn from './components/LearnerSignIn'
-import LearnerHome from './components/LearnerHome'
 import ParentLayout from './components/ParentLayout'
 import Dashboard from './components/Dashboard'
-import Journey from './components/Journey'
 import Support from './components/Support'
 import Profile from './components/Profile'
 import Settings from './components/Settings'
 import Notifications from './components/Notifications'
 import AddChild from './components/AddChild'
-import TeacherLayout from './components/TeacherLayout'
-import {
-  TeacherOverview, TeacherStudents, TeacherStudentDetail, TeacherScores,
-  TeacherAttendance, TeacherAssignments, TeacherAnnouncements, TeacherSettings,
-} from './components/TeacherDashboard'
 import Legal from './components/Legal'
 import NotFound from './components/NotFound'
+
+// Charts (recharts) and the teacher/learner areas load on demand, keeping the
+// first download small for parents on mobile data (PRD §15).
+const Journey = lazy(() => import('./components/Journey'))
+const LearnerHome = lazy(() => import('./components/LearnerHome'))
+const TeacherLayout = lazy(() => import('./components/TeacherLayout'))
+const teacherPage = (name: keyof typeof import('./components/TeacherDashboard')) =>
+  lazy(() => import('./components/TeacherDashboard').then(m => ({ default: m[name] as React.ComponentType })))
+const TeacherOverview = teacherPage('TeacherOverview')
+const TeacherStudents = teacherPage('TeacherStudents')
+const TeacherStudentDetail = teacherPage('TeacherStudentDetail')
+const TeacherScores = teacherPage('TeacherScores')
+const TeacherAttendance = teacherPage('TeacherAttendance')
+const TeacherAssignments = teacherPage('TeacherAssignments')
+const TeacherAnnouncements = teacherPage('TeacherAnnouncements')
+const TeacherSettings = teacherPage('TeacherSettings')
 
 export type Tab = 'dashboard' | 'journey' | 'support' | 'profile' | 'settings'
 
@@ -77,6 +86,7 @@ export default function App() {
         <ToastProvider>
           <BrowserRouter>
             <ScrollToTop />
+            <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/signin" element={<GuestOnly role="parent"><SignIn /></GuestOnly>} />
@@ -115,6 +125,7 @@ export default function App() {
               <Route path="/learner" element={<RequireRole role="learner"><LearnerHome /></RequireRole>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </ToastProvider>
       </StoreProvider>

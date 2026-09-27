@@ -64,7 +64,7 @@ export default function LearnerHome() {
           </Card>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <section>
             <SectionTitle icon={<CalendarClock size={15} />}>To do</SectionTitle>
             {todo.length === 0 ? (

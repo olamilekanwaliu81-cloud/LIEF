@@ -154,7 +154,7 @@ export default function Landing() {
       </section>
 
       {/* ── Photo collage ── */}
-      <section className={`${container} py-12 lg:py-20 w-full grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-16`}>
+      <section className={`${container} py-12 lg:py-20 w-full grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-center lg:gap-16`}>
         <div>
           <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)', ...display }}>Built for real families</p>
           <h2 className="text-2xl lg:text-4xl font-black mb-4" style={{ ...display, color: 'var(--primary)', letterSpacing: '-0.01em' }}>
@@ -181,7 +181,7 @@ export default function Landing() {
       <section className={`${container} pb-12 lg:pb-20 w-full`}>
         <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)', ...display }}>What LEIF does</p>
         <h2 className="text-2xl lg:text-4xl font-black mb-8" style={{ ...display, color: 'var(--primary)' }}>Academic support, made simple for parents.</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           {features.map(({ icon: Icon, t, title, desc }, i) => (
             <div key={title} className="flex lg:flex-col items-start gap-4 rounded-2xl p-4 lg:p-5" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
               <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `var(--${t}-bg)` }}>
@@ -213,7 +213,7 @@ export default function Landing() {
 
       {/* ── Teacher section ── */}
       <section className="py-12 lg:py-20" style={{ background: 'var(--hero)', borderTop: '4px solid var(--accent)' }}>
-        <div className={`${container} grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-16`}>
+        <div className={`${container} grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-center lg:gap-16`}>
           <div>
             <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full mb-5" style={{ background: 'rgba(26,191,150,0.18)', color: 'var(--accent)', ...display }}>For Teachers</span>
             <h2 className="text-2xl lg:text-4xl font-black text-white mb-2 leading-snug" style={{ ...display, letterSpacing: '-0.01em' }}>Teachers power the platform.</h2>

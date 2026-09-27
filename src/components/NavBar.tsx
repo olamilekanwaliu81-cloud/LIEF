@@ -24,6 +24,7 @@ export default function NavBar() {
           <NavLink
             key={id}
             to={`/app/${id}`}
+            aria-label={label}
             className="relative flex-1 flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] transition-all"
           >
             {({ isActive }) => (

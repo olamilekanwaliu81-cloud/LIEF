@@ -86,7 +86,7 @@ export function TeacherOverview() {
       </div>
 
       {students.length === 0 ? <NoStudents /> : (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card className="p-4 sm:p-5">
             <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ ...display, color: 'var(--muted-foreground)' }}>Class performance distribution</p>
             <div className="flex gap-2">
@@ -126,7 +126,7 @@ export function TeacherOverview() {
           {atRisk.length > 0 && (
             <section className="lg:col-span-2">
               <SectionTitle icon={<AlertTriangle size={14} />} color="var(--warning)">Needs immediate attention</SectionTitle>
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {atRisk.map(s => {
                   const cfg = statusConfig[s.status]
                   const c = tone(cfg.tone)
@@ -213,7 +213,7 @@ export function TeacherStudents() {
           {filtered.length === 0 ? (
             <EmptyState icon={<Search size={36} />} title="No students match" body="Try a different name or filter." />
           ) : (
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {filtered.map(s => {
                 const cfg = statusConfig[s.status]
                 const missing = s.assignments.filter(a => !a.submitted && a.dueDate < todayISO()).length
@@ -286,7 +286,7 @@ export function TeacherStudentDetail() {
         <Button variant="accent" size="sm" onClick={() => navigate(`/teacher/scores/${s.id}`)}><Upload size={13} /> Update scores</Button>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
         <div className="space-y-4">
           <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: c.bg, border: `1.5px solid ${c.border}` }}>
             <div>
@@ -500,7 +500,7 @@ function ScoreForm({ student }: { student: StudentRecord }) {
         </div>
       </Card>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <TagEditor label="Areas needing support" t="warning" tags={weaknesses} setTags={setWeaknesses} placeholder="e.g. Fractions" />
         <TagEditor label="Strengths" t="success" tags={strengths} setTags={setStrengths} placeholder="e.g. Reading comprehension" />
       </div>
@@ -690,7 +690,7 @@ export function TeacherAssignments() {
         <Card className="p-4 sm:p-5">
           <form onSubmit={create} className="space-y-4" noValidate>
             <TextField label="Title" value={form.title} onChange={v => { setForm(f => ({ ...f, title: v })); setError('') }} placeholder="e.g. Fractions worksheet 2" />
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <SelectField label="Subject" value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))}>
                 <option value="">Select</option>
                 {subjectOptions.map(s => <option key={s} value={s}>{s}</option>)}
