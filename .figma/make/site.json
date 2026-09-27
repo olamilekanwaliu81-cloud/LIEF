@@ -1,0 +1,10 @@
+{
+  "description": "This web application streamlines UI/UX design processes, enabling designers to create visually appealing interfaces efficiently and collaboratively.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
