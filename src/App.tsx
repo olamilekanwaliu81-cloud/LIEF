@@ -1,80 +1,123 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { ThemeProvider } from './context/ThemeContext'
+import { StoreProvider, useStore } from './lib/store'
+import type { Role } from './lib/types'
+import { ToastProvider } from './components/ui'
 import Landing from './components/Landing'
 import SignIn from './components/SignIn'
 import SignUp from './components/SignUp'
 import TeacherSignIn from './components/TeacherSignIn'
 import TeacherSignUp from './components/TeacherSignUp'
-import TeacherDashboard from './components/TeacherDashboard'
+import LearnerSignIn from './components/LearnerSignIn'
+import LearnerHome from './components/LearnerHome'
+import ParentLayout from './components/ParentLayout'
 import Dashboard from './components/Dashboard'
 import Journey from './components/Journey'
 import Support from './components/Support'
 import Profile from './components/Profile'
 import Settings from './components/Settings'
 import Notifications from './components/Notifications'
-import Header from './components/Header'
-import NavBar from './components/NavBar'
+import AddChild from './components/AddChild'
+import TeacherLayout from './components/TeacherLayout'
+import {
+  TeacherOverview, TeacherStudents, TeacherStudentDetail, TeacherScores,
+  TeacherAttendance, TeacherAssignments, TeacherAnnouncements, TeacherSettings,
+} from './components/TeacherDashboard'
+import Legal from './components/Legal'
+import NotFound from './components/NotFound'
 
-type Screen = 'landing' | 'signin' | 'signup' | 'teacher-signin' | 'teacher-signup' | 'app' | 'teacher-app'
 export type Tab = 'dashboard' | 'journey' | 'support' | 'profile' | 'settings'
 
-function AppInner() {
-  const [screen, setScreen] = useState<Screen>('landing')
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard')
-  const [selectedConcern, setSelectedConcern] = useState<string | null>(null)
-  const [showNotifications, setShowNotifications] = useState(false)
+export const homeFor: Record<Role, string> = {
+  parent: '/app/dashboard',
+  teacher: '/teacher/overview',
+  learner: '/learner',
+}
 
-  const navigateToSupport = (concern: string) => {
-    setSelectedConcern(concern)
-    setActiveTab('support')
-  }
+const signInFor: Record<Role, string> = {
+  parent: '/signin',
+  teacher: '/teacher/signin',
+  learner: '/learner/signin',
+}
 
-  if (screen === 'landing') {
-    return (
-      <Landing
-        onSignIn={() => setScreen('signin')}
-        onSignUp={() => setScreen('signup')}
-        onTeacherSignIn={() => setScreen('teacher-signin')}
-        onTeacherSignUp={() => setScreen('teacher-signup')}
-      />
-    )
-  }
-  if (screen === 'signin')
-    return <SignIn onBack={() => setScreen('landing')} onSignIn={() => setScreen('app')} onGoSignUp={() => setScreen('signup')} />
-  if (screen === 'signup')
-    return <SignUp onBack={() => setScreen('landing')} onSignUp={() => setScreen('app')} onGoSignIn={() => setScreen('signin')} />
-  if (screen === 'teacher-signin')
-    return <TeacherSignIn onBack={() => setScreen('landing')} onSignIn={() => setScreen('teacher-app')} onGoSignUp={() => setScreen('teacher-signup')} />
-  if (screen === 'teacher-signup')
-    return <TeacherSignUp onBack={() => setScreen('landing')} onSignUp={() => setScreen('teacher-app')} onGoSignIn={() => setScreen('teacher-signin')} />
-  if (screen === 'teacher-app')
-    return <TeacherDashboard onSignOut={() => setScreen('landing')} />
+/** Protects a section of the app for one role. */
+function RequireRole({ role, children }: { role: Role; children: React.ReactNode }) {
+  const { session, db, signOut } = useStore()
+  const location = useLocation()
+  // A session can outlive its account (e.g. demo data reset in another tab).
+  const exists = !!session && (
+    session.role === 'parent' ? db.parents.some(p => p.id === session.userId)
+    : session.role === 'teacher' ? db.teachers.some(t => t.id === session.userId)
+    : db.students.some(s => s.id === session.userId))
+  useEffect(() => { if (session && !exists) signOut() }, [session, exists, signOut])
 
-  return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--background)' }}>
-      <Header onSignOut={() => setScreen('landing')} onBellClick={() => setShowNotifications(v => !v)} notifCount={3} />
-      <main className="flex-1 pb-24 overflow-y-auto">
-        {showNotifications ? (
-          <Notifications onClose={() => setShowNotifications(false)} />
-        ) : (
-          <>
-            {activeTab === 'dashboard' && <Dashboard onNavigateToSupport={navigateToSupport} />}
-            {activeTab === 'journey' && <Journey />}
-            {activeTab === 'support' && <Support selectedConcern={selectedConcern} onClearConcern={() => setSelectedConcern(null)} />}
-            {activeTab === 'profile' && <Profile onSignOut={() => setScreen('landing')} />}
-            {activeTab === 'settings' && <Settings onSignOut={() => setScreen('landing')} />}
-          </>
-        )}
-      </main>
-      <NavBar activeTab={activeTab} onTabChange={setActiveTab} />
-    </div>
-  )
+  if (!session || !exists) return <Navigate to={signInFor[role]} replace state={{ from: location.pathname }} />
+  if (session.role !== role) return <Navigate to={homeFor[session.role]} replace />
+  return <>{children}</>
+}
+
+/** Sign-in/up pages bounce straight to the app when already signed in as that role. */
+function GuestOnly({ role, children }: { role: Role; children: React.ReactNode }) {
+  const { session } = useStore()
+  if (session?.role === role) return <Navigate to={homeFor[role]} replace />
+  return <>{children}</>
+}
+
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
+  return null
 }
 
 export default function App() {
   return (
     <ThemeProvider>
-      <AppInner />
+      <StoreProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <ScrollToTop />
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/signin" element={<GuestOnly role="parent"><SignIn /></GuestOnly>} />
+              <Route path="/signup" element={<GuestOnly role="parent"><SignUp /></GuestOnly>} />
+              <Route path="/teacher/signin" element={<GuestOnly role="teacher"><TeacherSignIn /></GuestOnly>} />
+              <Route path="/teacher/signup" element={<GuestOnly role="teacher"><TeacherSignUp /></GuestOnly>} />
+              <Route path="/learner/signin" element={<GuestOnly role="learner"><LearnerSignIn /></GuestOnly>} />
+              <Route path="/legal/:doc" element={<Legal />} />
+
+              <Route path="/app" element={<RequireRole role="parent"><ParentLayout /></RequireRole>}>
+                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="journey" element={<Journey />} />
+                <Route path="support" element={<Support />} />
+                <Route path="support/:subject" element={<Support />} />
+                <Route path="profile" element={<Profile />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="notifications" element={<Notifications />} />
+                <Route path="children/new" element={<AddChild />} />
+              </Route>
+
+              <Route path="/teacher" element={<RequireRole role="teacher"><TeacherLayout /></RequireRole>}>
+                <Route index element={<Navigate to="overview" replace />} />
+                <Route path="overview" element={<TeacherOverview />} />
+                <Route path="students" element={<TeacherStudents />} />
+                <Route path="students/:id" element={<TeacherStudentDetail />} />
+                <Route path="scores" element={<TeacherScores />} />
+                <Route path="scores/:id" element={<TeacherScores />} />
+                <Route path="attendance" element={<TeacherAttendance />} />
+                <Route path="assignments" element={<TeacherAssignments />} />
+                <Route path="announcements" element={<TeacherAnnouncements />} />
+                <Route path="settings" element={<TeacherSettings />} />
+                <Route path="notifications" element={<Notifications />} />
+              </Route>
+
+              <Route path="/learner" element={<RequireRole role="learner"><LearnerHome /></RequireRole>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </ToastProvider>
+      </StoreProvider>
     </ThemeProvider>
   )
 }

@@ -1,854 +1,917 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
 import {
-  LayoutDashboard, Users, BarChart2, Megaphone, Settings,
-  Search, Upload, ChevronRight, Plus, X, CheckCircle2,
-  AlertTriangle, Clock, BookOpen, Phone, ArrowLeft,
-  TrendingUp, TrendingDown, Calendar, FileText, LogOut,
-  Bell, Filter, ChevronDown,
+  AlertTriangle, ArrowLeft, BarChart2, CalendarCheck, CheckCircle2, ChevronDown, ChevronRight, Clock,
+  ClipboardList, Edit3, LogOut, Megaphone, Phone, Plus, Search, Sprout, Trash2, Upload, Users, X,
 } from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell,
-} from 'recharts'
-import {
-  teacher, students as initialStudents, announcements as initialAnnouncements,
-  statusConfig, type StudentRecord, type PerformanceStatus, type Announcement,
-} from '../data/teacher'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { useStore, useTeacher } from '../lib/store'
+import { attendanceRate, average, shortSubject } from '../lib/academics'
+import { formatDate, formatLongDate, formatShortDate, greeting, initials, todayISO } from '../lib/format'
 import { getSubjectsForClass } from '../data/grades'
-
-type TeacherTab = 'overview' | 'students' | 'scores' | 'attendance' | 'announcements' | 'settings'
-type View = 'list' | 'student-detail' | 'upload'
-
-interface Props { onSignOut: () => void }
+import type { AttendanceStatus, PerformanceStatus, StudentRecord } from '../lib/types'
+import { LEGAL_LINKS, LinkRow, ResetDemoButton, SettingsSection, ThemePicker } from './Settings'
+import {
+  Button, Callout, Card, Chip, EmptyState, Modal, PageHeader, Pill, SectionTitle, SelectField, TextField,
+  display, scoreTone, statusConfig, tone, useToast,
+} from './ui'
 
 const TERMS = ['First Term', 'Second Term', 'Third Term']
 
-function avg(s: StudentRecord) {
-  if (!s.scores.length) return 0
-  return Math.round(s.scores.reduce((a, b) => a + b.score, 0) / s.scores.length)
-}
+const ATTENDANCE: { key: AttendanceStatus; label: string; name: string; color: string }[] = [
+  { key: 'present', label: 'P', name: 'Present', color: 'var(--accent)' },
+  { key: 'late', label: 'L', name: 'Late', color: 'var(--warning-strong)' },
+  { key: 'excused', label: 'E', name: 'Excused', color: 'var(--purple)' },
+  { key: 'absent', label: 'A', name: 'Absent', color: 'var(--warning)' },
+]
 
-// ── HEADER ────────────────────────────────────────────────────────────────
-function TeacherHeader({ activeTab, onTabChange, onSignOut, onBellClick, notifCount }: {
-  activeTab: TeacherTab; onTabChange: (t: TeacherTab) => void; onSignOut: () => void
-  onBellClick?: () => void; notifCount?: number
-}) {
-  const tabs: { id: TeacherTab; label: string; Icon: React.ElementType }[] = [
-    { id: 'overview',      label: 'Overview',      Icon: LayoutDashboard },
-    { id: 'students',      label: 'Students',      Icon: Users },
-    { id: 'scores',        label: 'Scores',        Icon: BarChart2 },
-    { id: 'attendance',    label: 'Attendance',    Icon: Calendar },
-    { id: 'announcements', label: 'Announce',      Icon: Megaphone },
-    { id: 'settings',      label: 'Settings',      Icon: Settings },
-  ]
+function Avatar({ s, size = 40 }: { s: StudentRecord; size?: number }) {
+  const c = tone(statusConfig[s.status].tone)
   return (
-    <>
-      <header className="sticky top-0 z-30 border-b" style={{ background: 'var(--primary)', borderColor: 'rgba(255,255,255,0.08)' }}>
-        <div className="flex items-center justify-between px-4 py-3 w-full">
-          <div>
-            <span className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.45)', fontFamily: 'Quicksand, sans-serif' }}>Teacher Portal</span>
-            <p className="text-base font-black text-white" style={{ fontFamily: 'Quicksand, sans-serif' }}>{teacher.name}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={onBellClick} className="relative w-8 h-8 flex items-center justify-center rounded-full" style={{ background: 'rgba(255,255,255,0.10)', color: '#fff' }}>
-              <Bell size={15} />
-              {(notifCount ?? 0) > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-white" style={{ background: 'var(--accent)', fontSize: '9px', fontWeight: 800 }}>
-                  {notifCount}
-                </span>
-              )}
-            </button>
-            <div
-              className="w-8 h-8 flex items-center justify-center rounded-full font-black text-sm"
-              style={{ background: 'var(--accent)', color: '#fff', fontFamily: 'Quicksand, sans-serif' }}
-            >
-              {teacher.name.split(' ').filter((_,i,a) => i === a.length-1)[0][0]}
-            </div>
-          </div>
-        </div>
-      </header>
-      {/* Tab bar */}
-      <div className="sticky top-[57px] z-20 border-b overflow-x-auto" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-        <div className="flex px-2 min-w-max">
-          {tabs.map(({ id, label, Icon }) => {
-            const active = activeTab === id
-            return (
-              <button
-                key={id}
-                onClick={() => onTabChange(id)}
-                className="flex items-center gap-1.5 px-3 py-3 text-xs font-bold whitespace-nowrap border-b-2 transition-all"
-                style={{
-                  fontFamily: 'Quicksand, sans-serif',
-                  color: active ? 'var(--accent)' : 'var(--muted-foreground)',
-                  borderBottomColor: active ? 'var(--accent)' : 'transparent',
-                }}
-              >
-                <Icon size={13} />
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-    </>
+    <div className="rounded-full flex items-center justify-center font-black text-sm shrink-0" style={{ width: size, height: size, background: c.bg, color: c.color, ...display }}>
+      {initials(s.name)}
+    </div>
   )
 }
 
-// ── OVERVIEW TAB ──────────────────────────────────────────────────────────
-function OverviewTab({ allStudents, onGoToStudents, onGoToScores }: {
-  allStudents: StudentRecord[]
-  onGoToStudents: () => void
-  onGoToScores: () => void
-}) {
-  const statusCounts = useMemo(() => ({
-    excellent: allStudents.filter(s => s.status === 'excellent').length,
-    good:      allStudents.filter(s => s.status === 'good').length,
-    average:   allStudents.filter(s => s.status === 'average').length,
-    watch:     allStudents.filter(s => s.status === 'needs-attention' || s.status === 'critical').length,
-  }), [allStudents])
+function NoStudents() {
+  const { teacher } = useTeacher()
+  return (
+    <Card className="p-2">
+      <EmptyState
+        icon={<Users size={40} />}
+        title="No students in your classes yet"
+        body={`Students appear here when a parent registers their child at ${teacher?.school ?? 'your school'} in ${teacher?.classes.join(' or ') ?? 'your classes'}.`}
+      />
+    </Card>
+  )
+}
 
-  const classAvg = Math.round(allStudents.reduce((a, s) => a + avg(s), 0) / allStudents.length)
+// ── OVERVIEW ─────────────────────────────────────────────────────────────
+export function TeacherOverview() {
+  const { teacher, students } = useTeacher()
+  const navigate = useNavigate()
 
-  // Subject averages for chart
-  const subjectMap: Record<string, number[]> = {}
-  allStudents.forEach(s => s.scores.forEach(sc => {
-    if (!subjectMap[sc.subject]) subjectMap[sc.subject] = []
-    subjectMap[sc.subject].push(sc.score)
-  }))
-  const subjectData = Object.entries(subjectMap).map(([name, scores]) => ({
-    name: name.split(' ')[0],
-    avg: Math.round(scores.reduce((a,b) => a+b, 0) / scores.length),
-  })).sort((a,b) => b.avg - a.avg)
+  const stats = useMemo(() => {
+    const subjectMap: Record<string, number[]> = {}
+    students.forEach(s => s.scores.forEach(sc => { (subjectMap[sc.subject] ??= []).push(sc.score) }))
+    return {
+      classAvg: students.length ? Math.round(students.reduce((a, s) => a + average(s), 0) / students.length) : 0,
+      counts: {
+        excellent: students.filter(s => s.status === 'excellent').length,
+        good: students.filter(s => s.status === 'good').length,
+        average: students.filter(s => s.status === 'average').length,
+        watch: students.filter(s => s.status === 'needs-attention' || s.status === 'critical').length,
+      },
+      subjectData: Object.entries(subjectMap)
+        .map(([name, scores]) => ({ name: shortSubject(name), full: name, avg: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) }))
+        .sort((a, b) => b.avg - a.avg),
+      missing: students.flatMap(s => s.assignments.filter(a => !a.submitted && a.dueDate < todayISO())).length,
+      toMark: students.flatMap(s => s.assignments.filter(a => a.submitted && a.score === undefined)).length,
+    }
+  }, [students])
 
-  const criticalStudents = allStudents.filter(s => s.status === 'critical' || s.status === 'needs-attention')
-  const pendingAssignments = allStudents.flatMap(s => s.assignments.filter(a => !a.submitted)).length
+  if (!teacher) return null
+  const atRisk = students.filter(s => s.status === 'critical' || s.status === 'needs-attention')
 
   return (
-    <div className="px-4 pt-5 pb-8 space-y-5 w-full">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-xl font-black" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>
-          Good morning, {teacher.name.split(' ')[1]}
-        </h1>
-        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-          {teacher.school} · {teacher.classes.join(', ')}
-        </p>
+    <div className="space-y-6">
+      <PageHeader title={`${greeting()}, ${teacher.title ? `${teacher.title} ${teacher.lastName}` : teacher.firstName}`} subtitle={`${teacher.school} · ${teacher.classes.join(', ')}`} />
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <QuickStat value={students.length} label="Total students" t="info" />
+        <QuickStat value={stats.classAvg} label="Class average" suffix="/100" t="success" />
+        <QuickStat value={stats.counts.watch} label="Need attention" t="warning" />
+        <QuickStat value={stats.missing} label="Missing work" t="caution" />
       </div>
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <QuickStat value={allStudents.length} label="Total students" color="var(--primary)" bg="var(--secondary)" />
-        <QuickStat value={classAvg} label="Class average" suffix="/100" color="#0F8A5F" bg="#E8F8F3" />
-        <QuickStat value={statusCounts.watch} label="Need attention" color="#C0521A" bg="#FFF0EA" />
-        <QuickStat value={pendingAssignments} label="Missing work" color="#B07000" bg="#FFF8E7" />
-      </div>
+      {students.length === 0 ? <NoStudents /> : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="p-4 sm:p-5">
+            <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ ...display, color: 'var(--muted-foreground)' }}>Class performance distribution</p>
+            <div className="flex gap-2">
+              {([['excellent', 'Excellent', 'success'], ['good', 'Good', 'info'], ['average', 'Average', 'purple'], ['watch', 'At risk', 'warning']] as const).map(([key, label, t]) => {
+                const count = stats.counts[key]
+                const pct = students.length ? Math.round((count / students.length) * 100) : 0
+                return (
+                  <div key={key} className="flex-1 flex flex-col gap-1 text-center">
+                    <div className="h-24 rounded-lg flex items-end" style={{ background: 'var(--muted)' }}>
+                      <div className="w-full rounded-lg transition-all" style={{ height: `${pct}%`, minHeight: count > 0 ? 8 : 0, background: tone(t).color }} />
+                    </div>
+                    <p className="text-sm font-black" style={{ color: tone(t).color, ...display }}>{count}</p>
+                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{label}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
 
-      {/* Performance distribution */}
-      <div className="rounded-2xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--muted-foreground)' }}>
-          Class performance distribution
-        </p>
-        <div className="flex gap-2 mb-3">
-          {([
-            ['excellent', statusCounts.excellent],
-            ['good', statusCounts.good],
-            ['average', statusCounts.average],
-            ['watch', statusCounts.watch],
-          ] as [string, number][]).map(([key, count]) => {
-            const cfg = key === 'watch' ? { label: 'At risk', color: '#C0521A', bg: '#FFF0EA' } : statusConfig[key as PerformanceStatus]
-            const pct = Math.round((count / allStudents.length) * 100)
-            return (
-              <div key={key} className="flex-1 flex flex-col gap-1 text-center">
-                <div className="h-16 rounded-lg flex items-end" style={{ background: 'var(--muted)' }}>
-                  <div className="w-full rounded-lg transition-all" style={{ height: `${pct}%`, minHeight: count > 0 ? '8px' : 0, background: cfg.color }} />
-                </div>
-                <p className="text-xs font-bold" style={{ color: cfg.color }}>{count}</p>
-                <p className="text-xs" style={{ color: 'var(--muted-foreground)', fontSize: '10px' }}>{cfg.label}</p>
+          <Card className="p-4 sm:p-5">
+            <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ ...display, color: 'var(--muted-foreground)' }}>Subject averages</p>
+            <div className="h-[180px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.subjectData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} interval={0} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+                  <Tooltip cursor={{ fill: 'var(--muted)' }} contentStyle={{ borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--foreground)', fontSize: 12, fontFamily: 'Quicksand, sans-serif' }} />
+                  <Bar dataKey="avg" name="Average" radius={[4, 4, 0, 0]}>
+                    {stats.subjectData.map(d => <Cell key={d.full} fill={d.avg >= 70 ? '#1ABF96' : d.avg >= 50 ? '#E97B2E' : '#C0521A'} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          {atRisk.length > 0 && (
+            <section className="lg:col-span-2">
+              <SectionTitle icon={<AlertTriangle size={14} />} color="var(--warning)">Needs immediate attention</SectionTitle>
+              <div className="grid gap-2 md:grid-cols-2">
+                {atRisk.map(s => {
+                  const cfg = statusConfig[s.status]
+                  const c = tone(cfg.tone)
+                  return (
+                    <Link key={s.id} to={`/teacher/students/${s.id}`} className="rounded-xl px-4 py-3 flex items-center gap-3 transition-all hover:opacity-90" style={{ background: c.bg, border: `1px solid ${c.border}` }}>
+                      <Avatar s={s} size={34} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold truncate" style={{ color: 'var(--foreground)', ...display }}>{s.name}</p>
+                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Avg {average(s)}/100 · {cfg.label}</p>
+                      </div>
+                      <ChevronRight size={15} style={{ color: c.color }} />
+                    </Link>
+                  )
+                })}
               </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Subject average chart */}
-      <div className="rounded-2xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--muted-foreground)' }}>
-          Subject averages
-        </p>
-        <ResponsiveContainer width="100%" height={160}>
-          <BarChart data={subjectData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-            <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid var(--border)', fontSize: 12, fontFamily: 'Quicksand, sans-serif' }} />
-            <Bar dataKey="avg" radius={[4, 4, 0, 0]}>
-              {subjectData.map((d, i) => (
-                <Cell key={i} fill={d.avg >= 70 ? '#1ABF96' : d.avg >= 50 ? '#E97B2E' : '#C0521A'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Students needing attention */}
-      {criticalStudents.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle size={14} style={{ color: '#C0521A' }} />
-            <p className="text-xs font-bold uppercase tracking-widest" style={{ fontFamily: 'Quicksand, sans-serif', color: '#C0521A' }}>
-              Needs immediate attention
-            </p>
-          </div>
-          <div className="space-y-2">
-            {criticalStudents.map(s => {
-              const cfg = statusConfig[s.status]
-              return (
-                <div key={s.id} className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs" style={{ background: cfg.color, color: '#fff', fontFamily: 'Quicksand, sans-serif' }}>
-                    {s.name.split(' ').map(n => n[0]).join('').slice(0,2)}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-bold" style={{ color: 'var(--foreground)', fontFamily: 'Quicksand, sans-serif' }}>{s.name}</p>
-                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Avg {avg(s)}/100 · {cfg.label}</p>
-                  </div>
-                  <span className="text-xs font-bold px-2 py-1 rounded-full" style={{ background: cfg.color, color: '#fff' }}>{avg(s)}</span>
-                </div>
-              )
-            })}
-          </div>
+            </section>
+          )}
         </div>
       )}
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 gap-3">
-        <button onClick={onGoToScores} className="flex items-center gap-2 rounded-xl p-3.5 text-left transition-all hover:opacity-90" style={{ background: 'var(--accent)', color: '#fff' }}>
-          <Upload size={16} />
-          <div><p className="text-sm font-bold" style={{ fontFamily: 'Quicksand, sans-serif' }}>Upload scores</p><p className="text-xs opacity-70">Add term results</p></div>
-        </button>
-        <button onClick={onGoToStudents} className="flex items-center gap-2 rounded-xl p-3.5 text-left transition-all hover:opacity-90" style={{ background: 'var(--secondary)', color: 'var(--primary)' }}>
-          <Users size={16} />
-          <div><p className="text-sm font-bold" style={{ fontFamily: 'Quicksand, sans-serif' }}>View students</p><p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>All profiles</p></div>
-        </button>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <QuickAction onClick={() => navigate('/teacher/scores')} Icon={Upload} title="Upload scores" note="Publish term results" primary />
+        <QuickAction onClick={() => navigate('/teacher/attendance')} Icon={CalendarCheck} title="Take attendance" note={formatShortDate(todayISO())} />
+        <QuickAction onClick={() => navigate('/teacher/assignments')} Icon={ClipboardList} title="Assignments" note={stats.toMark ? `${stats.toMark} to mark` : 'Set new work'} />
       </div>
     </div>
   )
 }
 
-// ── STUDENTS TAB ──────────────────────────────────────────────────────────
-function StudentsTab({ allStudents, onUpload }: { allStudents: StudentRecord[]; onUpload: (s: StudentRecord) => void }) {
+function QuickStat({ value, label, t, suffix = '' }: { value: number; label: string; t: 'info' | 'success' | 'warning' | 'caution'; suffix?: string }) {
+  const c = tone(t)
+  return (
+    <div className="rounded-xl p-3.5" style={{ background: c.bg, border: `1px solid ${c.border}` }}>
+      <p className="text-2xl font-black" style={{ ...display, color: c.color }}>{value}<span className="text-sm">{suffix}</span></p>
+      <p className="text-xs mt-0.5 font-semibold leading-snug" style={{ color: 'var(--muted-foreground)' }}>{label}</p>
+    </div>
+  )
+}
+
+function QuickAction({ onClick, Icon, title, note, primary }: { onClick: () => void; Icon: React.ElementType; title: string; note: string; primary?: boolean }) {
+  return (
+    <button onClick={onClick} className="flex items-center gap-3 rounded-xl p-4 text-left transition-all hover:opacity-90" style={primary ? { background: 'var(--accent)', color: '#fff' } : { background: 'var(--secondary)', color: 'var(--primary)', border: '1px solid var(--border)' }}>
+      <Icon size={18} />
+      <div>
+        <p className="text-sm font-bold" style={display}>{title}</p>
+        <p className="text-xs" style={{ opacity: primary ? 0.8 : 1, color: primary ? undefined : 'var(--muted-foreground)' }}>{note}</p>
+      </div>
+    </button>
+  )
+}
+
+// ── STUDENTS ─────────────────────────────────────────────────────────────
+export function TeacherStudents() {
+  const { teacher, students } = useTeacher()
   const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState<PerformanceStatus | 'all'>('all')
-  const [selected, setSelected] = useState<StudentRecord | null>(null)
+  const [status, setStatus] = useState<PerformanceStatus | 'all'>('all')
+  const [cls, setCls] = useState('all')
 
-  const filtered = allStudents.filter(s => {
-    const matchSearch = s.name.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = filterStatus === 'all' || s.status === filterStatus
-    return matchSearch && matchStatus
-  })
+  if (!teacher) return null
+  const filtered = students
+    .filter(s => s.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter(s => status === 'all' || s.status === status)
+    .filter(s => cls === 'all' || s.class === cls)
+    .sort((a, b) => a.name.localeCompare(b.name))
 
-  if (selected) {
-    const cfg = statusConfig[selected.status]
-    const attendanceDays = selected.attendance.length
-    const presentDays = selected.attendance.filter(a => a.status === 'present' || a.status === 'late').length
-    const attendancePct = Math.round((presentDays / attendanceDays) * 100)
-    return (
-      <div className="w-full">
-        <div className="sticky top-[105px] z-10 flex items-center gap-3 px-4 py-3 border-b" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-          <button onClick={() => setSelected(null)} className="w-8 h-8 flex items-center justify-center rounded-lg" style={{ background: 'var(--secondary)', color: 'var(--primary)' }}><ArrowLeft size={15} /></button>
-          <div className="flex-1">
-            <p className="font-black text-sm" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>{selected.name}</p>
-            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{selected.class} · {selected.id}</p>
+  return (
+    <div className="space-y-5">
+      <PageHeader title="Students" subtitle={`${students.length} learner${students.length === 1 ? '' : 's'} across ${teacher.classes.join(', ')}`} />
+      {students.length === 0 ? <NoStudents /> : (
+        <>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex-1 relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--muted-foreground)' }} />
+              <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search students…" aria-label="Search students" className="field !pl-9 !py-2.5" />
+            </div>
+            <div className="flex gap-2">
+              <Dropdown label="Filter by class" value={cls} onChange={setCls} options={[['all', 'All classes'], ...teacher.classes.map(c => [c, c] as [string, string])]} />
+              <Dropdown label="Filter by status" value={status} onChange={v => setStatus(v as PerformanceStatus | 'all')} options={[['all', 'All statuses'], ...Object.entries(statusConfig).map(([k, v]) => [k, v.label] as [string, string])]} />
+            </div>
           </div>
-          <button onClick={() => onUpload(selected)} className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg" style={{ background: 'var(--accent)', color: '#fff', fontFamily: 'Quicksand, sans-serif' }}>
-            <Upload size={12} /> Update
-          </button>
+
+          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }} aria-live="polite">{filtered.length} student{filtered.length !== 1 ? 's' : ''}</p>
+
+          {filtered.length === 0 ? (
+            <EmptyState icon={<Search size={36} />} title="No students match" body="Try a different name or filter." />
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              {filtered.map(s => {
+                const cfg = statusConfig[s.status]
+                const missing = s.assignments.filter(a => !a.submitted && a.dueDate < todayISO()).length
+                return (
+                  <Link key={s.id} to={`/teacher/students/${s.id}`} className="rounded-xl flex items-center gap-3 px-4 py-3 transition-all hover:opacity-90" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                    <Avatar s={s} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm truncate" style={{ color: 'var(--foreground)', ...display }}>{s.name}</p>
+                      <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                        <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.class}</span>
+                        <Pill t={cfg.tone}>{s.scores.length ? cfg.label : 'No scores yet'}</Pill>
+                        {missing > 0 && <span className="text-xs font-bold" style={{ color: 'var(--warning)' }}>{missing} missing</span>}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-lg font-black" style={{ ...display, color: 'var(--foreground)' }}>{s.scores.length ? average(s) : '—'}</p>
+                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>avg</p>
+                    </div>
+                    <ChevronRight size={14} style={{ color: 'var(--muted-foreground)' }} />
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function Dropdown({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
+  return (
+    <div className="relative flex-1 sm:flex-none">
+      <select value={value} onChange={e => onChange(e.target.value)} aria-label={label} className="field appearance-none !py-2.5 !pr-8 font-semibold">
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--muted-foreground)' }} />
+    </div>
+  )
+}
+
+export function TeacherStudentDetail() {
+  const { id } = useParams()
+  const { students } = useTeacher()
+  const { db } = useStore()
+  const navigate = useNavigate()
+  const s = students.find(x => x.id === id)
+
+  if (!s) {
+    return <EmptyState icon={<Users size={40} />} title="Student not found" body="They may not be in your classes." action={<Button variant="secondary" onClick={() => navigate('/teacher/students')}>Back to students</Button>} />
+  }
+
+  const cfg = statusConfig[s.status]
+  const c = tone(cfg.tone)
+  const rate = attendanceRate(s)
+  const presentDays = s.attendance.filter(a => a.status === 'present' || a.status === 'late').length
+  const parentActions = s.privacy.shareActivityWithTeacher ? db.actions.filter(a => a.studentId === s.id) : []
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3 flex-wrap">
+        <button onClick={() => navigate('/teacher/students')} aria-label="Back to students" className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ background: 'var(--secondary)', color: 'var(--primary)' }}>
+          <ArrowLeft size={16} />
+        </button>
+        <Avatar s={s} size={44} />
+        <div className="flex-1 min-w-0">
+          <h1 className="font-black text-xl truncate" style={{ ...display, color: 'var(--primary)' }}>{s.name}</h1>
+          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.class} · {s.id}</p>
         </div>
-        <div className="px-4 pt-4 pb-8 space-y-4">
-          {/* Status + contact */}
-          <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: cfg.bg, border: `1.5px solid ${cfg.border}` }}>
+        <Button variant="accent" size="sm" onClick={() => navigate(`/teacher/scores/${s.id}`)}><Upload size={13} /> Update scores</Button>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+        <div className="space-y-4">
+          <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: c.bg, border: `1.5px solid ${c.border}` }}>
             <div>
-              <p className="font-black text-sm" style={{ fontFamily: 'Quicksand, sans-serif', color: cfg.color }}>{cfg.label}</p>
-              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Updated {selected.lastUpdated}</p>
+              <p className="font-black text-sm" style={{ ...display, color: c.color }}>{s.scores.length ? cfg.label : 'No scores yet'}</p>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Updated {formatDate(s.lastUpdated)}</p>
             </div>
             <div className="ml-auto text-right">
-              <p className="text-2xl font-black" style={{ fontFamily: 'Quicksand, sans-serif', color: cfg.color }}>{avg(selected)}</p>
+              <p className="text-2xl font-black" style={{ ...display, color: c.color }}>{s.scores.length ? average(s) : '—'}</p>
               <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>avg score</p>
             </div>
           </div>
 
-          {/* Parent contact */}
           <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: 'var(--secondary)', border: '1px solid var(--border)' }}>
             <Phone size={14} style={{ color: 'var(--muted-foreground)' }} />
             <div>
-              <p className="text-xs font-bold" style={{ color: 'var(--foreground)' }}>{selected.parentName}</p>
-              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{selected.parentPhone}</p>
+              <p className="text-xs font-bold" style={{ color: 'var(--foreground)' }}>{s.parentName || 'Parent'}</p>
+              {s.parentPhone ? <a href={`tel:${s.parentPhone.replace(/\s/g, '')}`} className="text-xs underline" style={{ color: 'var(--muted-foreground)' }}>{s.parentPhone}</a> : <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Contact via LEIF</p>}
             </div>
           </div>
 
-          {/* Attendance summary */}
-          <div className="rounded-xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--muted-foreground)', fontFamily: 'Quicksand, sans-serif' }}>Attendance</p>
-            <div className="flex items-center gap-4 mb-3">
-              <p className="text-2xl font-black" style={{ fontFamily: 'Quicksand, sans-serif', color: attendancePct >= 80 ? '#0F8A5F' : '#C0521A' }}>{attendancePct}%</p>
-              <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{presentDays}/{attendanceDays} days present</p>
-            </div>
-            <div className="flex gap-1.5 flex-wrap">
-              {selected.attendance.map((a, i) => {
-                const color = a.status === 'present' ? '#1ABF96' : a.status === 'late' ? '#E97B2E' : a.status === 'excused' ? '#7B5EA7' : '#C0521A'
-                return <div key={i} title={`${a.date}: ${a.status}`} className="w-6 h-6 rounded" style={{ background: color }} />
-              })}
-            </div>
-            <div className="flex gap-3 mt-2">
-              {[['#1ABF96','Present'],['#E97B2E','Late'],['#7B5EA7','Excused'],['#C0521A','Absent']].map(([c,l]) => (
-                <div key={l} className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm" style={{ background: c }} /><span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{l}</span></div>
-              ))}
-            </div>
-          </div>
+          <Card className="p-4">
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--muted-foreground)', ...display }}>Attendance</p>
+            {s.attendance.length === 0 ? <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Not recorded yet.</p> : (
+              <>
+                <div className="flex items-center gap-4 mb-3">
+                  <p className="text-2xl font-black" style={{ ...display, color: rate >= 80 ? 'var(--success)' : 'var(--warning)' }}>{rate}%</p>
+                  <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{presentDays}/{s.attendance.length} days present</p>
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {s.attendance.map(a => {
+                    const opt = ATTENDANCE.find(o => o.key === a.status)!
+                    return <div key={a.date} title={`${formatShortDate(a.date)}: ${opt.name}`} aria-label={`${formatShortDate(a.date)}: ${opt.name}`} className="w-6 h-6 rounded" style={{ background: opt.color }} />
+                  })}
+                </div>
+                <div className="flex gap-3 mt-2 flex-wrap">
+                  {ATTENDANCE.map(o => (
+                    <div key={o.key} className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm" style={{ background: o.color }} /><span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{o.name}</span></div>
+                  ))}
+                </div>
+              </>
+            )}
+          </Card>
 
-          {/* Scores */}
-          <div className="rounded-xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--muted-foreground)', fontFamily: 'Quicksand, sans-serif' }}>
-              {selected.scores[0]?.term ?? 'Term'} scores
-            </p>
-            {selected.scores.map(sc => (
+          {s.teacherNote && (
+            <div className="rounded-xl p-4" style={{ background: 'var(--secondary)', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-bold mb-1" style={{ color: 'var(--primary)', ...display }}>Your note to parent</p>
+              <p className="text-sm leading-relaxed italic" style={{ color: 'var(--foreground)' }}>“{s.teacherNote}”</p>
+            </div>
+          )}
+
+          {parentActions.length > 0 && (
+            <Card className="p-4">
+              <p className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: 'var(--accent)', ...display }}><Sprout size={13} /> Support at home</p>
+              <ul className="space-y-2">
+                {parentActions.map(a => (
+                  <li key={a.id} className="text-sm" style={{ color: 'var(--foreground)' }}>
+                    <strong>{a.title}</strong> <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>· {a.subject} · {a.status === 'done' ? 'done' : `since ${formatShortDate(a.startedAt)}`}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs mt-2" style={{ color: 'var(--muted-foreground)' }}>Shared by the parent. They can turn this off at any time.</p>
+            </Card>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <Card className="p-4">
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--muted-foreground)', ...display }}>{s.scores[0]?.term ?? 'Term'} scores</p>
+            {s.scores.length === 0 && <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>No scores uploaded yet.</p>}
+            {s.scores.map(sc => (
               <div key={sc.subject} className="flex items-center gap-3 mb-2">
                 <span className="text-xs flex-1 truncate" style={{ color: 'var(--foreground)' }}>{sc.subject}</span>
                 <div className="w-24 h-2 rounded-full overflow-hidden" style={{ background: 'var(--secondary)' }}>
-                  <div className="h-full rounded-full" style={{ width: `${sc.score}%`, background: sc.score >= 70 ? '#1ABF96' : sc.score >= 50 ? '#E97B2E' : '#C0521A' }} />
+                  <div className="h-full rounded-full" style={{ width: `${sc.score}%`, background: tone(scoreTone(sc.score)).color }} />
                 </div>
-                <span className="text-xs font-black w-6 text-right" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>{sc.score}</span>
+                <span className="text-xs font-black w-6 text-right" style={{ ...display, color: 'var(--foreground)' }}>{sc.score}</span>
               </div>
             ))}
-          </div>
+          </Card>
 
-          {/* Weaknesses / Strengths */}
-          {selected.weaknesses.length > 0 && (
-            <div>
-              <p className="text-xs font-bold mb-2" style={{ color: '#C0521A' }}>Areas needing support</p>
-              <div className="flex flex-wrap gap-2">
-                {selected.weaknesses.map(w => <span key={w} className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: '#FFF0EA', color: '#C0521A' }}>{w}</span>)}
-              </div>
-            </div>
-          )}
-          {selected.strengths.length > 0 && (
-            <div>
-              <p className="text-xs font-bold mb-2" style={{ color: '#0F8A5F' }}>Strengths</p>
-              <div className="flex flex-wrap gap-2">
-                {selected.strengths.map(s => <span key={s} className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: '#E8F8F3', color: '#0F8A5F' }}>{s}</span>)}
-              </div>
-            </div>
-          )}
-
-          {/* Teacher note */}
-          {selected.teacherNote && (
-            <div className="rounded-xl p-4" style={{ background: 'var(--secondary)', border: '1px solid var(--border)' }}>
-              <p className="text-xs font-bold mb-1" style={{ color: 'var(--primary)', fontFamily: 'Quicksand, sans-serif' }}>Note to parent</p>
-              <p className="text-sm leading-relaxed italic" style={{ color: 'var(--foreground)' }}>"{selected.teacherNote}"</p>
-            </div>
+          {(s.weaknesses.length > 0 || s.strengths.length > 0) && (
+            <Card className="p-4 space-y-3">
+              {s.weaknesses.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold mb-2" style={{ color: 'var(--warning)' }}>Areas needing support</p>
+                  <div className="flex flex-wrap gap-2">{s.weaknesses.map(w => <Pill key={w} t="warning">{w}</Pill>)}</div>
+                </div>
+              )}
+              {s.strengths.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold mb-2" style={{ color: 'var(--success)' }}>Strengths</p>
+                  <div className="flex flex-wrap gap-2">{s.strengths.map(w => <Pill key={w} t="success">{w}</Pill>)}</div>
+                </div>
+              )}
+            </Card>
           )}
 
-          {/* Assignments */}
-          <div className="rounded-xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--muted-foreground)', fontFamily: 'Quicksand, sans-serif' }}>Assignments</p>
-            {selected.assignments.map(a => (
-              <div key={a.id} className="flex items-center gap-3 py-2 border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
-                <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: a.submitted ? '#E8F8F3' : '#FFF0EA' }}>
-                  {a.submitted ? <CheckCircle2 size={12} style={{ color: '#0F8A5F' }} /> : <Clock size={12} style={{ color: '#C0521A' }} />}
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold" style={{ color: 'var(--foreground)' }}>{a.title}</p>
-                  <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Due {a.dueDate}</p>
-                </div>
-                {a.score !== undefined && <span className="text-xs font-bold" style={{ color: '#0F8A5F' }}>{a.score}/100</span>}
-                {!a.submitted && <span className="text-xs font-bold" style={{ color: '#C0521A' }}>Missing</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="px-4 pt-4 pb-8 space-y-4 w-full">
-      {/* Search + filter */}
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search students…"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm outline-none"
-            style={{ border: '1.5px solid var(--border)', color: 'var(--foreground)', background: 'var(--card)' }}
-          />
-        </div>
-        <div className="relative">
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value as PerformanceStatus | 'all')}
-            className="appearance-none pl-3 pr-8 py-2.5 rounded-xl text-sm font-semibold outline-none"
-            style={{ border: '1.5px solid var(--border)', color: 'var(--foreground)', background: 'var(--card)' }}
-          >
-            <option value="all">All</option>
-            <option value="excellent">Excellent</option>
-            <option value="good">Good</option>
-            <option value="average">Average</option>
-            <option value="needs-attention">Needs attention</option>
-            <option value="critical">Critical</option>
-          </select>
-          <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--muted-foreground)' }} />
-        </div>
-      </div>
-
-      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{filtered.length} student{filtered.length !== 1 ? 's' : ''}</p>
-
-      <div className="space-y-2">
-        {filtered.map(s => {
-          const cfg = statusConfig[s.status]
-          const missingWork = s.assignments.filter(a => !a.submitted).length
-          return (
-            <button
-              key={s.id}
-              onClick={() => setSelected(s)}
-              className="w-full rounded-xl text-left transition-all hover:opacity-90"
-              style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
-            >
-              <div className="flex items-center gap-3 px-4 py-3">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shrink-0" style={{ background: cfg.bg, color: cfg.color, fontFamily: 'Quicksand, sans-serif' }}>
-                  {s.name.split(' ').map(n => n[0]).join('').slice(0,2)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm truncate" style={{ color: 'var(--foreground)', fontFamily: 'Quicksand, sans-serif' }}>{s.name}</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.class}</span>
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                    {missingWork > 0 && <span className="text-xs font-bold" style={{ color: '#C0521A' }}>{missingWork} missing</span>}
+          <Card className="p-4">
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--muted-foreground)', ...display }}>Assignments</p>
+            {s.assignments.length === 0 && <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>None set.</p>}
+            {s.assignments.map(a => {
+              const overdue = !a.submitted && a.dueDate < todayISO()
+              return (
+                <div key={a.id} className="flex items-center gap-3 py-2 border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: a.submitted ? 'var(--success-bg)' : overdue ? 'var(--warning-bg)' : 'var(--secondary)' }}>
+                    {a.submitted ? <CheckCircle2 size={13} style={{ color: 'var(--success)' }} /> : <Clock size={13} style={{ color: overdue ? 'var(--warning)' : 'var(--muted-foreground)' }} />}
                   </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="text-right">
-                    <p className="text-lg font-black" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>{avg(s)}</p>
-                    <p className="text-xs" style={{ color: 'var(--muted-foreground)', fontSize: '10px' }}>avg</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold truncate" style={{ color: 'var(--foreground)' }}>{a.title}</p>
+                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Due {formatShortDate(a.dueDate)}</p>
                   </div>
-                  <ChevronRight size={14} style={{ color: 'var(--border)' }} />
+                  {a.score !== undefined ? <span className="text-xs font-bold" style={{ color: 'var(--success)' }}>{a.score}/100</span>
+                    : a.submitted ? <span className="text-xs font-bold" style={{ color: 'var(--info)' }}>To mark</span>
+                    : overdue ? <span className="text-xs font-bold" style={{ color: 'var(--warning)' }}>Missing</span>
+                    : <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Pending</span>}
                 </div>
-              </div>
-            </button>
-          )
-        })}
+              )
+            })}
+          </Card>
+        </div>
       </div>
     </div>
   )
 }
 
-// ── SCORES UPLOAD TAB ────────────────────────────────────────────────────
-function ScoresTab({ allStudents, setAllStudents }: { allStudents: StudentRecord[]; setAllStudents: React.Dispatch<React.SetStateAction<StudentRecord[]>> }) {
-  const [selectedId, setSelectedId] = useState(allStudents[0]?.id ?? '')
-  const student = allStudents.find(s => s.id === selectedId) ?? allStudents[0]
-  const subjects = getSubjectsForClass(student?.class ?? 'Primary 4')
+// ── SCORES UPLOAD ────────────────────────────────────────────────────────
+export function TeacherScores() {
+  const { id } = useParams()
+  const { students } = useTeacher()
+  const navigate = useNavigate()
+  if (students.length === 0) return <div className="space-y-5"><PageHeader title="Upload scores" /><NoStudents /></div>
+  const student = students.find(s => s.id === id) ?? [...students].sort((a, b) => a.name.localeCompare(b.name))[0]
 
-  const [term, setTerm] = useState(TERMS[1])
-  const [scores, setScores] = useState<Record<string, string>>(() =>
-    Object.fromEntries((student?.scores ?? []).map(sc => [sc.subject, String(sc.score)]))
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <PageHeader title="Upload scores" subtitle="Scores, flags and notes publish straight to the parent's dashboard." />
+      <SelectField label="Student" value={student.id} onChange={v => navigate(`/teacher/scores/${v}`, { replace: true })}>
+        {[...students].sort((a, b) => a.name.localeCompare(b.name)).map(s => <option key={s.id} value={s.id}>{s.name} — {s.class}</option>)}
+      </SelectField>
+      {/* Keyed so the form resets when switching students */}
+      <ScoreForm key={student.id} student={student} />
+    </div>
   )
-  const [weaknesses, setWeaknesses] = useState<string[]>(student?.weaknesses ?? [])
-  const [strengths, setStrengths] = useState<string[]>(student?.strengths ?? [])
-  const [note, setNote] = useState(student?.teacherNote ?? '')
-  const [newW, setNewW] = useState('')
-  const [newS, setNewS] = useState('')
-  const [saved, setSaved] = useState(false)
+}
 
-  const handleStudentChange = (id: string) => {
-    setSelectedId(id)
-    const s = allStudents.find(st => st.id === id)
-    if (!s) return
-    setScores(Object.fromEntries(s.scores.map(sc => [sc.subject, String(sc.score)])))
-    setWeaknesses([...s.weaknesses])
-    setStrengths([...s.strengths])
-    setNote(s.teacherNote)
-    setSaved(false)
+function ScoreForm({ student }: { student: StudentRecord }) {
+  const { saveScores } = useStore()
+  const toast = useToast()
+  const subjects = Array.from(new Set([...getSubjectsForClass(student.class), ...student.scores.map(s => s.subject)]))
+  const [term, setTerm] = useState(student.scores[0]?.term && TERMS.includes(student.scores[0].term) ? student.scores[0].term : TERMS[1])
+  const [scores, setScores] = useState<Record<string, string>>(() => Object.fromEntries(student.scores.map(sc => [sc.subject, String(sc.score)])))
+  const [weaknesses, setWeaknesses] = useState(student.weaknesses)
+  const [strengths, setStrengths] = useState(student.strengths)
+  const [note, setNote] = useState(student.teacherNote)
+  const [error, setError] = useState('')
+  const [confirm, setConfirm] = useState(false)
+
+  const invalid = Object.entries(scores).filter(([, v]) => v !== '' && (Number.isNaN(Number(v)) || Number(v) < 0 || Number(v) > 100)).map(([k]) => k)
+  const filled = Object.entries(scores).filter(([, v]) => v !== '')
+
+  const review = () => {
+    if (invalid.length) return setError(`Scores must be between 0 and 100 (check ${invalid.map(shortSubject).join(', ')}).`)
+    if (!filled.length) return setError('Enter at least one subject score.')
+    setError('')
+    setConfirm(true)
   }
 
-  const handleSave = () => {
-    const newScores = subjects
-      .filter(subj => scores[subj] !== '' && scores[subj] !== undefined)
-      .map(subj => ({ subject: subj, score: Number(scores[subj]), term, maxScore: 100 }))
-    const a = newScores.reduce((x, y) => x + y.score, 0) / (newScores.length || 1)
-    const status: PerformanceStatus = a >= 85 ? 'excellent' : a >= 70 ? 'good' : a >= 55 ? 'average' : a >= 45 ? 'needs-attention' : 'critical'
-    setAllStudents(prev => prev.map(s => s.id === selectedId
-      ? { ...s, scores: newScores, weaknesses, strengths, teacherNote: note, lastUpdated: 'Sep 22, 2026', status }
-      : s
-    ))
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+  const publish = () => {
+    saveScores(student.id, {
+      term,
+      scores: Object.fromEntries(filled.map(([k, v]) => [k, Math.round(Number(v))])),
+      weaknesses, strengths, note: note.trim(),
+    })
+    setConfirm(false)
+    toast(`Published — ${student.name.split(' ')[0]}'s parent has been notified`)
   }
 
   return (
-    <div className="px-4 pt-4 pb-8 space-y-4 w-full">
-      {/* Student selector */}
-      <div>
-        <label className="block text-xs font-bold mb-1.5" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>Student</label>
-        <select
-          value={selectedId}
-          onChange={e => handleStudentChange(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-          style={{ border: '1.5px solid var(--border)', color: 'var(--foreground)', background: 'var(--card)' }}
-        >
-          {allStudents.map(s => <option key={s.id} value={s.id}>{s.name} — {s.class}</option>)}
-        </select>
-      </div>
-
-      {/* Term */}
-      <div className="flex gap-2">
+    <div className="space-y-5">
+      <div role="radiogroup" aria-label="Term" className="flex gap-2">
         {TERMS.map(t => (
-          <button key={t} onClick={() => setTerm(t)} className="flex-1 py-2 rounded-xl text-xs font-bold transition-all" style={{ fontFamily: 'Quicksand, sans-serif', background: term === t ? 'var(--primary)' : 'var(--secondary)', color: term === t ? '#fff' : 'var(--muted-foreground)' }}>
+          <button key={t} role="radio" aria-checked={term === t} onClick={() => setTerm(t)} className="flex-1 py-2.5 rounded-xl text-xs font-bold transition-all" style={{ ...display, background: term === t ? 'var(--primary)' : 'var(--secondary)', color: term === t ? '#fff' : 'var(--muted-foreground)' }}>
             {t}
           </button>
         ))}
       </div>
 
-      {/* Scores */}
-      <div className="rounded-2xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--muted-foreground)', fontFamily: 'Quicksand, sans-serif' }}>Subject scores (out of 100)</p>
-        <div className="space-y-2.5">
+      <Card className="p-4 sm:p-5">
+        <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--muted-foreground)', ...display }}>Subject scores (out of 100)</p>
+        <div className="grid gap-x-8 gap-y-2.5 md:grid-cols-2">
           {subjects.map(subj => {
-            const val = Number(scores[subj] ?? '')
-            const color = val >= 70 ? '#1ABF96' : val >= 50 ? '#E97B2E' : val > 0 ? '#C0521A' : 'var(--muted-foreground)'
+            const raw = scores[subj] ?? ''
+            const bad = invalid.includes(subj)
+            const color = raw === '' ? 'var(--muted-foreground)' : bad ? 'var(--warning)' : tone(scoreTone(Number(raw))).color
             return (
-              <div key={subj} className="flex items-center gap-3">
+              <label key={subj} className="flex items-center gap-3">
                 <span className="text-xs flex-1 leading-tight" style={{ color: 'var(--foreground)' }}>{subj}</span>
                 <input
-                  type="number" min="0" max="100"
-                  value={scores[subj] ?? ''}
-                  onChange={e => setScores(p => ({ ...p, [subj]: e.target.value }))}
+                  type="number" min={0} max={100} inputMode="numeric"
+                  value={raw}
+                  onChange={e => { setScores(p => ({ ...p, [subj]: e.target.value })); setError('') }}
                   placeholder="—"
-                  className="w-14 px-2 py-1.5 rounded-lg text-sm text-center font-bold outline-none"
-                  style={{ border: `1.5px solid ${scores[subj] ? color : 'var(--border)'}`, color, fontFamily: 'Quicksand, sans-serif', background: 'var(--background)' }}
+                  aria-label={`${subj} score`}
+                  aria-invalid={bad || undefined}
+                  className="w-16 px-2 py-1.5 rounded-lg text-sm text-center font-bold outline-none"
+                  style={{ border: `1.5px solid ${raw === '' ? 'var(--border)' : color}`, color, ...display, background: 'var(--surface)' }}
                 />
-              </div>
+              </label>
             )
           })}
         </div>
+      </Card>
+
+      <div className="grid gap-5 md:grid-cols-2">
+        <TagEditor label="Areas needing support" t="warning" tags={weaknesses} setTags={setWeaknesses} placeholder="e.g. Fractions" />
+        <TagEditor label="Strengths" t="success" tags={strengths} setTags={setStrengths} placeholder="e.g. Reading comprehension" />
       </div>
 
-      {/* Weaknesses */}
-      <TagEditor label="Areas needing support" color="#C0521A" bg="#FFF0EA" tags={weaknesses} setTags={setWeaknesses} input={newW} setInput={setNewW} placeholder="e.g. Fractions" />
-      {/* Strengths */}
-      <TagEditor label="Strengths" color="#0F8A5F" bg="#E8F8F3" tags={strengths} setTags={setStrengths} input={newS} setInput={setNewS} placeholder="e.g. Reading comprehension" />
-
-      {/* Note */}
       <div>
-        <label className="block text-xs font-bold mb-1.5" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>Note to parent (visible in parent dashboard)</label>
-        <textarea rows={3} value={note} onChange={e => setNote(e.target.value)} placeholder="Write a note for the parent…" className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none" style={{ border: '1.5px solid var(--border)', color: 'var(--foreground)', background: 'var(--card)', fontFamily: 'DM Sans, sans-serif' }} />
+        <label htmlFor="teacher-note" className="block text-xs font-bold mb-1.5" style={{ ...display, color: 'var(--foreground)' }}>Note to parent (visible on the parent dashboard)</label>
+        <textarea id="teacher-note" rows={3} value={note} onChange={e => setNote(e.target.value)} placeholder="Write a short, encouraging note for the parent…" maxLength={400} className="field resize-none" />
+        <p className="text-xs mt-1 text-right" style={{ color: 'var(--muted-foreground)' }}>{note.length}/400</p>
       </div>
 
-      <button
-        onClick={handleSave}
-        className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold text-base transition-all hover:opacity-90"
-        style={{ fontFamily: 'Quicksand, sans-serif', background: saved ? '#0F8A5F' : 'var(--accent)', color: '#fff' }}
-      >
-        {saved ? <><CheckCircle2 size={16} /> Saved — visible to parent</> : <><Upload size={16} /> Save & publish to parent</>}
-      </button>
-    </div>
-  )
-}
+      {error && <p role="alert" className="text-sm font-semibold" style={{ color: 'var(--warning)' }}>{error}</p>}
 
-// ── ATTENDANCE TAB ────────────────────────────────────────────────────────
-function AttendanceTab({ allStudents, setAllStudents }: { allStudents: StudentRecord[]; setAllStudents: React.Dispatch<React.SetStateAction<StudentRecord[]>> }) {
-  const today = '2026-09-22'
-  const toggleAttendance = (studentId: string, status: 'present' | 'absent' | 'late' | 'excused') => {
-    setAllStudents(prev => prev.map(s => {
-      if (s.id !== studentId) return s
-      const existing = s.attendance.find(a => a.date === today)
-      const updated = existing
-        ? s.attendance.map(a => a.date === today ? { ...a, status } : a)
-        : [...s.attendance, { date: today, status }]
-      return { ...s, attendance: updated }
-    }))
-  }
+      <Button variant="accent" size="lg" block onClick={review}><Upload size={16} /> Save & publish to parent</Button>
 
-  const statusOptions: { key: 'present' | 'absent' | 'late' | 'excused'; label: string; color: string }[] = [
-    { key: 'present', label: 'P', color: '#1ABF96' },
-    { key: 'late',    label: 'L', color: '#E97B2E' },
-    { key: 'excused', label: 'E', color: '#7B5EA7' },
-    { key: 'absent',  label: 'A', color: '#C0521A' },
-  ]
-
-  return (
-    <div className="px-4 pt-4 pb-8 space-y-4 w-full">
-      <div>
-        <h2 className="font-black text-base" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>Attendance — Monday 22 Sep 2026</h2>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Tap to mark each student's attendance. P = Present, L = Late, E = Excused, A = Absent.</p>
-      </div>
-
-      <div className="space-y-2">
-        {allStudents.map(s => {
-          const todayEntry = s.attendance.find(a => a.date === today)
-          const current = todayEntry?.status
-          return (
-            <div key={s.id} className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-              <p className="text-sm font-semibold flex-1" style={{ color: 'var(--foreground)' }}>{s.name}</p>
-              <div className="flex gap-1">
-                {statusOptions.map(opt => (
-                  <button
-                    key={opt.key}
-                    onClick={() => toggleAttendance(s.id, opt.key)}
-                    className="w-8 h-8 rounded-full font-black text-xs transition-all"
-                    style={{
-                      fontFamily: 'Quicksand, sans-serif',
-                      background: current === opt.key ? opt.color : 'var(--secondary)',
-                      color: current === opt.key ? '#fff' : 'var(--muted-foreground)',
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Summary */}
-      <div className="rounded-xl p-4" style={{ background: 'var(--secondary)', border: '1px solid var(--border)' }}>
-        <p className="text-xs font-bold mb-2" style={{ color: 'var(--muted-foreground)', fontFamily: 'Quicksand, sans-serif' }}>Today's summary</p>
-        {statusOptions.map(opt => {
-          const count = allStudents.filter(s => s.attendance.find(a => a.date === today)?.status === opt.key).length
-          return (
-            <div key={opt.key} className="flex items-center justify-between py-1">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ background: opt.color }} />
-                <span className="text-xs" style={{ color: 'var(--foreground)' }}>
-                  {opt.key.charAt(0).toUpperCase() + opt.key.slice(1)}
-                </span>
-              </div>
-              <span className="text-xs font-bold" style={{ color: opt.color }}>{count}</span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── ANNOUNCEMENTS TAB ────────────────────────────────────────────────────
-function AnnouncementsTab({ announcements, setAnnouncements }: { announcements: Announcement[]; setAnnouncements: React.Dispatch<React.SetStateAction<Announcement[]>> }) {
-  const [composing, setComposing] = useState(false)
-  const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
-  const [classTarget, setClassTarget] = useState('Primary 4')
-
-  const handlePost = () => {
-    if (!title.trim() || !body.trim()) return
-    const newAnn: Announcement = {
-      id: `ANN-${Date.now()}`,
-      title, body,
-      date: 'Sep 22, 2026',
-      classTarget,
-    }
-    setAnnouncements(prev => [newAnn, ...prev])
-    setTitle(''); setBody(''); setComposing(false)
-  }
-
-  return (
-    <div className="px-4 pt-4 pb-8 space-y-4 w-full">
-      {!composing ? (
-        <button
-          onClick={() => setComposing(true)}
-          className="w-full flex items-center gap-2 py-3.5 rounded-xl font-bold text-sm transition-all hover:opacity-90"
-          style={{ fontFamily: 'Quicksand, sans-serif', background: 'var(--accent)', color: '#fff' }}
-        >
-          <Plus size={16} /> New announcement
-        </button>
-      ) : (
-        <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <p className="text-sm font-black" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>New announcement</p>
-          <div className="flex gap-2">
-            {['Primary 4', 'Primary 5', 'All classes'].map(c => (
-              <button key={c} onClick={() => setClassTarget(c)} className="flex-1 py-1.5 rounded-xl text-xs font-bold transition-all" style={{ fontFamily: 'Quicksand, sans-serif', background: classTarget === c ? 'var(--primary)' : 'var(--secondary)', color: classTarget === c ? '#fff' : 'var(--muted-foreground)' }}>
-                {c}
-              </button>
-            ))}
-          </div>
-          <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={{ border: '1.5px solid var(--border)', color: 'var(--foreground)', background: 'var(--background)' }} />
-          <textarea rows={3} value={body} onChange={e => setBody(e.target.value)} placeholder="Write your announcement…" className="w-full px-4 py-2.5 rounded-xl text-sm outline-none resize-none" style={{ border: '1.5px solid var(--border)', color: 'var(--foreground)', background: 'var(--background)' }} />
-          <div className="flex gap-2">
-            <button onClick={handlePost} className="flex-1 py-2.5 rounded-xl font-bold text-sm" style={{ fontFamily: 'Quicksand, sans-serif', background: 'var(--accent)', color: '#fff' }}>Post to parents</button>
-            <button onClick={() => setComposing(false)} className="px-4 py-2.5 rounded-xl font-bold text-sm" style={{ fontFamily: 'Quicksand, sans-serif', background: 'var(--secondary)', color: 'var(--muted-foreground)' }}>Cancel</button>
-          </div>
+      <Modal open={confirm} onClose={() => setConfirm(false)} title="Publish these results?" description={`${student.name}'s parent will see these ${term.toLowerCase()} scores and your note straight away.`}>
+        <ul className="rounded-xl p-3 mb-4 space-y-1" style={{ background: 'var(--secondary)' }}>
+          {filled.map(([k, v]) => (
+            <li key={k} className="flex justify-between text-xs"><span style={{ color: 'var(--foreground)' }}>{k}</span><strong style={{ color: tone(scoreTone(Number(v))).color }}>{v}</strong></li>
+          ))}
+        </ul>
+        <div className="flex gap-2">
+          <Button variant="accent" block onClick={publish}><CheckCircle2 size={15} /> Publish</Button>
+          <Button variant="secondary" onClick={() => setConfirm(false)}>Keep editing</Button>
         </div>
-      )}
-
-      <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)', fontFamily: 'Quicksand, sans-serif' }}>Posted announcements</p>
-
-      <div className="space-y-3">
-        {announcements.map(a => (
-          <div key={a.id} className="rounded-xl p-4" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="flex items-start justify-between gap-2 mb-1">
-              <p className="font-bold text-sm" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>{a.title}</p>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ background: 'var(--secondary)', color: 'var(--primary)' }}>{a.classTarget}</span>
-            </div>
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{a.body}</p>
-            <p className="text-xs mt-2" style={{ color: 'var(--muted-foreground)' }}>{a.date}</p>
-          </div>
-        ))}
-      </div>
+      </Modal>
     </div>
   )
 }
 
-// ── TEACHER SETTINGS ─────────────────────────────────────────────────────
-function TeacherSettingsTab({ onSignOut }: { onSignOut: () => void }) {
-  return (
-    <div className="px-4 pt-5 pb-8 space-y-5 w-full">
-      <div className="rounded-2xl p-5" style={{ background: 'var(--primary)' }}>
-        <p className="text-sm font-black text-white" style={{ fontFamily: 'Quicksand, sans-serif' }}>{teacher.name}</p>
-        <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>{teacher.id} · {teacher.school}</p>
-        <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{teacher.email}</p>
-        <div className="flex gap-2 mt-3 flex-wrap">
-          {teacher.subjects.map(s => <span key={s} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'var(--accent)', color: '#fff' }}>{s}</span>)}
-          {teacher.classes.map(c => <span key={c} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>{c}</span>)}
-        </div>
-      </div>
-
-      <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
-        {[['School', teacher.school], ['Teacher ID', teacher.id], ['Classes', teacher.classes.join(', ')], ['Joined', teacher.joined]].map(([label, value], i, arr) => (
-          <div key={label} className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
-            <span className="text-xs flex-1 font-semibold" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
-            <span className="text-xs font-bold" style={{ color: 'var(--foreground)' }}>{value}</span>
-          </div>
-        ))}
-      </div>
-
-      <button
-        onClick={onSignOut}
-        className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl font-bold text-sm"
-        style={{ fontFamily: 'Quicksand, sans-serif', background: '#FFF0EA', color: '#C0521A', border: '1px solid #F5C5A0' }}
-      >
-        <LogOut size={16} /> Sign out
-      </button>
-    </div>
-  )
-}
-
-// ── Shared helpers ────────────────────────────────────────────────────────
-function TagEditor({ label, color, bg, tags, setTags, input, setInput, placeholder }: {
-  label: string; color: string; bg: string
-  tags: string[]; setTags: (t: string[]) => void
-  input: string; setInput: (v: string) => void; placeholder: string
-}) {
-  const add = () => { if (input.trim()) { setTags([...tags, input.trim()]); setInput('') } }
+function TagEditor({ label, t, tags, setTags, placeholder }: { label: string; t: 'warning' | 'success'; tags: string[]; setTags: (t: string[]) => void; placeholder: string }) {
+  const [input, setInput] = useState('')
+  const c = tone(t)
+  const add = () => {
+    const v = input.trim()
+    if (v && !tags.some(x => x.toLowerCase() === v.toLowerCase())) setTags([...tags, v])
+    setInput('')
+  }
   return (
     <div>
-      <label className="block text-xs font-bold mb-2" style={{ fontFamily: 'Quicksand, sans-serif', color }}>
-        {label}
-      </label>
+      <p className="text-xs font-bold mb-2" style={{ ...display, color: c.color }}>{label}</p>
       <div className="flex flex-wrap gap-2 mb-2">
-        {tags.map(t => (
-          <span key={t} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: bg, color }}>
-            {t}<button onClick={() => setTags(tags.filter(x => x !== t))}><X size={10} /></button>
+        {tags.map(tag => (
+          <span key={tag} className="flex items-center gap-1 text-xs font-semibold pl-2.5 pr-1 py-0.5 rounded-full" style={{ background: c.bg, color: c.color }}>
+            {tag}
+            <button type="button" onClick={() => setTags(tags.filter(x => x !== tag))} aria-label={`Remove ${tag}`} className="w-5 h-5 flex items-center justify-center rounded-full"><X size={10} /></button>
           </span>
         ))}
       </div>
       <div className="flex gap-2">
         <input
           type="text" value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && add()}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
           placeholder={placeholder}
-          className="flex-1 px-3 py-2 rounded-xl text-xs outline-none"
-          style={{ border: `1.5px solid var(--border)`, color: 'var(--foreground)', background: 'var(--card)' }}
+          aria-label={`Add to ${label}`}
+          className="field !py-2 flex-1"
         />
-        <button onClick={add} className="px-3 py-2 rounded-xl" style={{ background: bg, color }}>
-          <Plus size={14} />
-        </button>
+        <button type="button" onClick={add} aria-label={`Add to ${label}`} className="px-3 rounded-xl" style={{ background: c.bg, color: c.color }}><Plus size={15} /></button>
       </div>
     </div>
   )
 }
 
-function QuickStat({ value, label, color, bg, suffix = '' }: { value: number; label: string; color: string; bg: string; suffix?: string }) {
+// ── ATTENDANCE ───────────────────────────────────────────────────────────
+export function TeacherAttendance() {
+  const { students } = useTeacher()
+  const { setAttendance } = useStore()
+  const toast = useToast()
+  const [date, setDate] = useState(todayISO())
+  const sorted = [...students].sort((a, b) => a.name.localeCompare(b.name))
+  const statusOn = (s: StudentRecord) => s.attendance.find(a => a.date === date)?.status
+
   return (
-    <div className="rounded-xl p-3" style={{ background: bg }}>
-      <p className="text-2xl font-black" style={{ fontFamily: 'Quicksand, sans-serif', color }}>{value}{suffix}</p>
-      <p className="text-xs mt-0.5 font-semibold leading-snug" style={{ color: 'var(--muted-foreground)' }}>{label}</p>
+    <div className="space-y-5 max-w-3xl">
+      <PageHeader
+        title="Attendance"
+        subtitle={formatLongDate(date)}
+        action={
+          <input type="date" value={date} max={todayISO()} onChange={e => e.target.value && setDate(e.target.value)} aria-label="Attendance date" className="field !w-auto !py-2" />
+        }
+      />
+      {students.length === 0 ? <NoStudents /> : (
+        <>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>P = Present · L = Late · E = Excused · A = Absent. Parents are alerted for absences and late arrivals.</p>
+            <Button size="sm" variant="secondary" onClick={() => { sorted.filter(s => !statusOn(s)).forEach(s => setAttendance(s.id, date, 'present')); toast('Remaining students marked present') }}>
+              <CheckCircle2 size={13} /> Mark rest present
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {sorted.map(s => {
+              const current = statusOn(s)
+              return (
+                <div key={s.id} className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                  <Avatar s={s} size={32} />
+                  <p className="text-sm font-semibold flex-1 min-w-0 truncate" style={{ color: 'var(--foreground)' }}>{s.name}</p>
+                  <div className="flex gap-1" role="radiogroup" aria-label={`Attendance for ${s.name}`}>
+                    {ATTENDANCE.map(opt => (
+                      <button
+                        key={opt.key}
+                        role="radio"
+                        aria-checked={current === opt.key}
+                        aria-label={opt.name}
+                        title={opt.name}
+                        onClick={() => setAttendance(s.id, date, opt.key)}
+                        className="w-9 h-9 rounded-full font-black text-xs transition-all"
+                        style={{ ...display, background: current === opt.key ? opt.color : 'var(--secondary)', color: current === opt.key ? '#fff' : 'var(--muted-foreground)' }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="rounded-xl p-4 grid grid-cols-2 sm:grid-cols-5 gap-3" style={{ background: 'var(--secondary)', border: '1px solid var(--border)' }}>
+            {ATTENDANCE.map(opt => (
+              <div key={opt.key} className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: opt.color }} />
+                <span className="text-xs flex-1" style={{ color: 'var(--foreground)' }}>{opt.name}</span>
+                <span className="text-xs font-bold" style={{ color: opt.color }}>{students.filter(s => statusOn(s) === opt.key).length}</span>
+              </div>
+            ))}
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--border)' }} />
+              <span className="text-xs flex-1" style={{ color: 'var(--foreground)' }}>Unmarked</span>
+              <span className="text-xs font-bold" style={{ color: 'var(--muted-foreground)' }}>{students.filter(s => !statusOn(s)).length}</span>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
-// ── ROOT ──────────────────────────────────────────────────────────────────
-export default function TeacherDashboard({ onSignOut }: Props) {
-  const [activeTab, setActiveTab] = useState<TeacherTab>('overview')
-  const [allStudents, setAllStudents] = useState(initialStudents)
-  const [allAnnouncements, setAllAnnouncements] = useState(initialAnnouncements)
-  const [uploadTarget, setUploadTarget] = useState<StudentRecord | null>(null)
-  const [showNotif, setShowNotif] = useState(false)
+// ── ASSIGNMENTS ──────────────────────────────────────────────────────────
+export function TeacherAssignments() {
+  const { teacher, students } = useTeacher()
+  const { createAssignment, gradeAssignment } = useStore()
+  const toast = useToast()
+  const [composing, setComposing] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [form, setForm] = useState({ title: '', subject: '', dueDate: '', classTarget: '' })
+  const [error, setError] = useState('')
+  const [grades, setGrades] = useState<Record<string, string>>({})
 
-  const handleUploadFromStudents = (s: StudentRecord) => {
-    setUploadTarget(s)
-    setActiveTab('scores')
+  // One row per assignment, aggregated across the students who received it.
+  const groups = useMemo(() => {
+    const map = new Map<string, { id: string; title: string; subject: string; dueDate: string; rows: { student: StudentRecord; submitted: boolean; score?: number }[] }>()
+    students.forEach(s => s.assignments.forEach(a => {
+      const g = map.get(a.id) ?? { id: a.id, title: a.title, subject: a.subject, dueDate: a.dueDate, rows: [] }
+      g.rows.push({ student: s, submitted: a.submitted, score: a.score })
+      map.set(a.id, g)
+    }))
+    return [...map.values()].sort((a, b) => b.dueDate.localeCompare(a.dueDate))
+  }, [students])
+
+  if (!teacher) return null
+  const subjectOptions = Array.from(new Set([...teacher.subjects, ...teacher.classes.flatMap(getSubjectsForClass)]))
+
+  const create = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.title.trim() || !form.subject || !form.dueDate || !form.classTarget) return setError('Fill in every field.')
+    createAssignment({ ...form, title: form.title.trim() })
+    toast(`“${form.title.trim()}” set for ${form.classTarget}`)
+    setForm({ title: '', subject: '', dueDate: '', classTarget: '' })
+    setComposing(false)
+    setError('')
+  }
+
+  const grade = (studentId: string, assignmentId: string) => {
+    const key = `${studentId}:${assignmentId}`
+    const n = Number(grades[key])
+    if (grades[key] === undefined || grades[key] === '' || Number.isNaN(n) || n < 0 || n > 100) return toast('Enter a mark between 0 and 100', 'warning')
+    gradeAssignment(studentId, assignmentId, Math.round(n))
+    setGrades(g => { const { [key]: _, ...rest } = g; return rest })
+    toast('Mark saved and shared with the parent')
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--background)' }}>
-      <TeacherHeader activeTab={activeTab} onTabChange={(t) => { setShowNotif(false); setActiveTab(t) }} onSignOut={onSignOut} onBellClick={() => setShowNotif(v => !v)} notifCount={2} />
-      <div className="flex-1 overflow-y-auto">
-        {showNotif ? (
-          <TeacherNotifications onClose={() => setShowNotif(false)} />
-        ) : (
-          <>
-            {activeTab === 'overview'      && <OverviewTab allStudents={allStudents} onGoToStudents={() => setActiveTab('students')} onGoToScores={() => setActiveTab('scores')} />}
-            {activeTab === 'students'      && <StudentsTab allStudents={allStudents} onUpload={handleUploadFromStudents} />}
-            {activeTab === 'scores'        && <ScoresTab allStudents={allStudents} setAllStudents={setAllStudents} />}
-            {activeTab === 'attendance'    && <AttendanceTab allStudents={allStudents} setAllStudents={setAllStudents} />}
-            {activeTab === 'announcements' && <AnnouncementsTab announcements={allAnnouncements} setAnnouncements={setAllAnnouncements} />}
-            {activeTab === 'settings'      && <TeacherSettingsTab onSignOut={onSignOut} />}
-          </>
-        )}
-      </div>
+    <div className="space-y-5 max-w-3xl">
+      <PageHeader title="Assignments" subtitle="Set work for your class. Learners tick it off; you mark it." action={!composing ? <Button variant="accent" onClick={() => setComposing(true)}><Plus size={15} /> New assignment</Button> : undefined} />
+
+      {composing && (
+        <Card className="p-4 sm:p-5">
+          <form onSubmit={create} className="space-y-4" noValidate>
+            <TextField label="Title" value={form.title} onChange={v => { setForm(f => ({ ...f, title: v })); setError('') }} placeholder="e.g. Fractions worksheet 2" />
+            <div className="grid gap-4 sm:grid-cols-3">
+              <SelectField label="Subject" value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))}>
+                <option value="">Select</option>
+                {subjectOptions.map(s => <option key={s} value={s}>{s}</option>)}
+              </SelectField>
+              <SelectField label="Class" value={form.classTarget} onChange={v => setForm(f => ({ ...f, classTarget: v }))}>
+                <option value="">Select</option>
+                {teacher.classes.map(c => <option key={c} value={c}>{c}</option>)}
+                {teacher.classes.length > 1 && <option value="All classes">All classes</option>}
+              </SelectField>
+              <TextField label="Due date" type="date" min={todayISO()} value={form.dueDate} onChange={v => setForm(f => ({ ...f, dueDate: v }))} />
+            </div>
+            {error && <p role="alert" className="text-xs font-semibold" style={{ color: 'var(--warning)' }}>{error}</p>}
+            <div className="flex gap-2">
+              <Button type="submit" variant="accent" className="flex-1">Set assignment</Button>
+              <Button type="button" variant="secondary" onClick={() => { setComposing(false); setError('') }}>Cancel</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {groups.length === 0 ? (
+        <EmptyState icon={<ClipboardList size={40} />} title="No assignments yet" body="Set your first piece of work and learners will see it in their LEIF task list." />
+      ) : (
+        <ul className="space-y-2">
+          {groups.map(g => {
+            const submitted = g.rows.filter(r => r.submitted).length
+            const toMark = g.rows.filter(r => r.submitted && r.score === undefined).length
+            const open = openId === g.id
+            return (
+              <li key={g.id} className="rounded-xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                <button onClick={() => setOpenId(open ? null : g.id)} aria-expanded={open} className="w-full flex items-center gap-3 px-4 py-3.5 text-left">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold" style={{ ...display, color: 'var(--primary)' }}>{g.title}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{shortSubject(g.subject)} · due {formatShortDate(g.dueDate)}</p>
+                  </div>
+                  {toMark > 0 && <Pill t="info">{toMark} to mark</Pill>}
+                  <span className="text-xs font-bold" style={{ color: 'var(--muted-foreground)' }}>{submitted}/{g.rows.length}</span>
+                  <ChevronDown size={15} className="transition-transform" style={{ color: 'var(--muted-foreground)', transform: open ? 'rotate(180deg)' : 'none' }} />
+                </button>
+                {open && (
+                  <div className="px-4 pb-3" style={{ borderTop: '1px solid var(--border)' }}>
+                    {g.rows.sort((a, b) => a.student.name.localeCompare(b.student.name)).map(r => {
+                      const key = `${r.student.id}:${g.id}`
+                      return (
+                        <div key={r.student.id} className="flex items-center gap-3 py-2.5 border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
+                          <span className="text-sm flex-1 min-w-0 truncate" style={{ color: 'var(--foreground)' }}>{r.student.name}</span>
+                          {r.score !== undefined ? <Pill t="success">{r.score}/100</Pill> : (
+                            <>
+                              <Pill t={r.submitted ? 'info' : g.dueDate < todayISO() ? 'warning' : 'neutral'}>{r.submitted ? 'Submitted' : g.dueDate < todayISO() ? 'Missing' : 'Pending'}</Pill>
+                              <input
+                                type="number" min={0} max={100} inputMode="numeric" placeholder="Mark"
+                                value={grades[key] ?? ''}
+                                onChange={e => setGrades(p => ({ ...p, [key]: e.target.value }))}
+                                onKeyDown={e => { if (e.key === 'Enter') grade(r.student.id, g.id) }}
+                                aria-label={`Mark for ${r.student.name}`}
+                                className="w-16 px-2 py-1 rounded-lg text-sm text-center font-bold outline-none"
+                                style={{ border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--foreground)' }}
+                              />
+                              <Button size="sm" variant="secondary" onClick={() => grade(r.student.id, g.id)}>Save</Button>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
 
-// ── TEACHER NOTIFICATIONS ────────────────────────────────────────────────
-function TeacherNotifications({ onClose }: { onClose: () => void }) {
-  const notifs = [
-    { id: 1, title: 'Score submission reminder', body: 'Third term scores for Primary 4 are due by Sep 30. Please upload before the deadline.', time: 'Today', color: '#E97B2E', bg: '#FFF4EC', unread: true },
-    { id: 2, title: 'Parent viewed Amara\'s profile', body: 'Fatima Adeyemi reviewed Amara\'s academic scores and support guidance this morning.', time: '3 hours ago', color: '#1ABF96', bg: '#E8F8F3', unread: true },
-    { id: 3, title: 'Announcement published', body: 'Your parent-teacher meeting announcement has been sent to all Primary 4 parents.', time: 'Yesterday', color: '#0D2B55', bg: '#E4F1F8', unread: false },
-    { id: 4, title: 'New student enrolled', body: 'Blessing Nwosu has been added to your Primary 4 class. Please update their profile.', time: 'Sep 20', color: '#7B5EA7', bg: '#F3EEF8', unread: false },
-  ]
+// ── ANNOUNCEMENTS ────────────────────────────────────────────────────────
+export function TeacherAnnouncements() {
+  const { teacher, announcements } = useTeacher()
+  const { postAnnouncement, deleteAnnouncement } = useStore()
+  const toast = useToast()
+  const [composing, setComposing] = useState(false)
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [classTarget, setClassTarget] = useState(teacher?.classes[0] ?? '')
+  const [error, setError] = useState('')
+  const [toDelete, setToDelete] = useState<string | null>(null)
+
+  if (!teacher) return null
+  const targets = teacher.classes.length > 1 ? [...teacher.classes, 'All classes'] : teacher.classes
+
+  const post = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim() || !body.trim()) return setError('Add a title and a message.')
+    postAnnouncement({ title: title.trim(), body: body.trim(), classTarget })
+    toast('Announcement sent to parents')
+    setTitle(''); setBody(''); setComposing(false); setError('')
+  }
 
   return (
-    <div className="w-full">
-      <div className="sticky top-0 z-10 px-4 py-4 flex items-center justify-between border-b" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-        <div>
-          <h1 className="text-xl font-black" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>Notifications</h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{notifs.filter(n => n.unread).length} unread</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: 'var(--secondary)', color: 'var(--muted-foreground)', fontFamily: 'Quicksand, sans-serif' }}>Mark all read</button>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full" style={{ background: 'var(--secondary)', color: 'var(--muted-foreground)' }}>
-            <X size={15} />
-          </button>
-        </div>
-      </div>
-      <div className="px-4 pt-4 pb-8 space-y-2 w-full">
-        {notifs.map(n => (
-          <div key={n.id} className="w-full rounded-xl px-4 py-3.5 flex items-start gap-3" style={{ background: n.unread ? 'var(--card)' : 'var(--background)', border: n.unread ? '1px solid var(--border)' : '1px solid transparent' }}>
-            <div className="w-9 h-9 rounded-full shrink-0 mt-0.5" style={{ background: n.bg }} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <p className="text-sm font-bold" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}>{n.title}</p>
-                {n.unread && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--accent)' }} />}
-              </div>
-              <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{n.body}</p>
-              <p className="text-xs mt-1.5 font-semibold" style={{ color: 'var(--muted-foreground)', opacity: 0.6 }}>{n.time}</p>
+    <div className="space-y-5 max-w-3xl">
+      <PageHeader title="Announcements" subtitle="Messages go to every parent in the selected class." action={!composing ? <Button variant="accent" onClick={() => setComposing(true)}><Plus size={15} /> New announcement</Button> : undefined} />
+
+      {composing && (
+        <Card className="p-4 sm:p-5">
+          <form onSubmit={post} className="space-y-3" noValidate>
+            <div className="flex gap-2 flex-wrap" role="radiogroup" aria-label="Send to">
+              {targets.map(c => <Chip key={c} active={classTarget === c} onClick={() => setClassTarget(c)}>{c}</Chip>)}
             </div>
+            <input type="text" value={title} onChange={e => { setTitle(e.target.value); setError('') }} placeholder="Title" aria-label="Announcement title" maxLength={80} className="field" />
+            <textarea rows={4} value={body} onChange={e => { setBody(e.target.value); setError('') }} placeholder="Write your announcement…" aria-label="Announcement message" maxLength={600} className="field resize-none" />
+            {error && <p role="alert" className="text-xs font-semibold" style={{ color: 'var(--warning)' }}>{error}</p>}
+            <div className="flex gap-2">
+              <Button type="submit" variant="accent" className="flex-1"><Megaphone size={15} /> Post to parents</Button>
+              <Button type="button" variant="secondary" onClick={() => { setComposing(false); setError('') }}>Cancel</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)', ...display }}>Posted announcements</p>
+      {announcements.length === 0 ? (
+        <EmptyState icon={<Megaphone size={40} />} title="Nothing posted yet" body="Share exam dates, meetings or reminders with parents." />
+      ) : (
+        <div className="space-y-3">
+          {[...announcements].sort((a, b) => b.date.localeCompare(a.date)).map(a => (
+            <Card key={a.id} className="p-4">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <p className="font-bold text-sm" style={{ ...display, color: 'var(--foreground)' }}>{a.title}</p>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Pill t="info">{a.classTarget}</Pill>
+                  <button onClick={() => setToDelete(a.id)} aria-label={`Delete “${a.title}”`} className="w-8 h-8 flex items-center justify-center rounded-lg" style={{ color: 'var(--muted-foreground)' }}><Trash2 size={14} /></button>
+                </div>
+              </div>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{a.body}</p>
+              <p className="text-xs mt-2" style={{ color: 'var(--muted-foreground)' }}>{formatDate(a.date)}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Modal open={!!toDelete} onClose={() => setToDelete(null)} title="Delete announcement?" description="It will be removed from your list. Parents who were already notified keep their notification.">
+        <div className="flex gap-2">
+          <Button variant="danger" block onClick={() => { if (toDelete) deleteAnnouncement(toDelete); setToDelete(null); toast('Announcement deleted', 'info') }}>Delete</Button>
+          <Button variant="secondary" onClick={() => setToDelete(null)}>Cancel</Button>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+// ── SETTINGS ─────────────────────────────────────────────────────────────
+export function TeacherSettings() {
+  const { teacher } = useTeacher()
+  const { signOut, updateTeacher } = useStore()
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' })
+  const [error, setError] = useState('')
+  if (!teacher) return null
+
+  const openEdit = () => { setForm({ firstName: teacher.firstName, lastName: teacher.lastName, email: teacher.email, phone: teacher.phone }); setEditing(true) }
+  const save = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.firstName.trim()) return setError('Enter your first name.')
+    updateTeacher({ firstName: form.firstName.trim(), lastName: form.lastName.trim(), email: form.email.trim(), phone: form.phone.trim() })
+    setEditing(false); setError('')
+    toast('Profile updated')
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <PageHeader title="Settings" />
+      <div className="rounded-2xl p-5 flex items-start gap-4" style={{ background: 'var(--hero)' }}>
+        <div className="flex-1 min-w-0">
+          <p className="text-lg font-black text-white" style={display}>{teacher.title ? `${teacher.title} ` : ''}{teacher.firstName} {teacher.lastName}</p>
+          <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>{teacher.id} · {teacher.school}</p>
+          <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{teacher.email}</p>
+          <div className="flex gap-2 mt-3 flex-wrap">
+            {teacher.subjects.map(s => <span key={s} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'var(--accent)', color: '#fff' }}>{s}</span>)}
+            {teacher.classes.map(c => <span key={c} className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>{c}</span>)}
+          </div>
+        </div>
+        <button onClick={openEdit} aria-label="Edit your details" className="w-10 h-10 flex items-center justify-center rounded-full shrink-0" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff' }}><Edit3 size={15} /></button>
+      </div>
+
+      <SettingsSection label="Account">
+        {[['School', teacher.school], ['Teacher ID', teacher.id], ['Classes', teacher.classes.join(', ')], ['Phone', teacher.phone || 'Not added'], ['Joined', formatDate(teacher.joined)]].map(([label, value], i, arr) => (
+          <div key={label} className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
+            <span className="text-sm flex-1" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
+            <span className="text-sm font-semibold text-right" style={{ color: 'var(--foreground)' }}>{value}</span>
           </div>
         ))}
-      </div>
+      </SettingsSection>
+
+      <SettingsSection label="Appearance">
+        <div className="p-4"><ThemePicker /></div>
+      </SettingsSection>
+
+      <SettingsSection label="Legal & Privacy">
+        {LEGAL_LINKS.map(({ to, label, Icon }) => <LinkRow key={to} to={to} icon={<Icon size={15} />} label={label} />)}
+        <ResetDemoButton />
+      </SettingsSection>
+
+      <Callout t="info" icon={<BarChart2 size={15} />}>Teachers can only see learners in their own classes at {teacher.school}. Parents control what else is shared.</Callout>
+
+      <Button variant="danger" block size="lg" className="!justify-start" onClick={() => { signOut(); navigate('/') }}>
+        <LogOut size={16} /> Sign out
+      </Button>
+
+      <Modal open={editing} onClose={() => setEditing(false)} title="Edit your details">
+        <form onSubmit={save} className="space-y-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <TextField label="First name" value={form.firstName} onChange={v => { setForm(f => ({ ...f, firstName: v })); setError('') }} error={error || undefined} />
+            <TextField label="Last name" value={form.lastName} onChange={v => setForm(f => ({ ...f, lastName: v }))} />
+          </div>
+          <TextField label="Email" type="email" value={form.email} onChange={v => setForm(f => ({ ...f, email: v }))} />
+          <TextField label="Phone" type="tel" value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} />
+          <Button type="submit" variant="accent" block size="lg">Save changes</Button>
+        </form>
+      </Modal>
     </div>
   )
 }

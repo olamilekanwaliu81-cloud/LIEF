@@ -1,203 +1,151 @@
-import { useState } from 'react'
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, Legend,
-} from 'recharts'
-import { journeyData, subjects } from '../data/child'
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { LineChart as LineIcon, Minus, TrendingDown, TrendingUp } from 'lucide-react'
+import { useParent } from '../lib/store'
+import { TARGET_SCORE, attendanceRate, shortSubject, subjectSummaries } from '../lib/academics'
+import { Card, Chip, EmptyState, PageHeader, Pill, Segmented, display } from './ui'
 
-const subjectColors: Record<string, string> = {
-  Math: '#1ABF96',
-  English: '#0D2B55',
-  Science: '#7B5EA7',
-  overall: '#E97B2E',
-}
+const PALETTE = ['#1ABF96', '#1E90D4', '#7B5EA7', '#E97B2E', '#D6455D', '#C9A227', '#2FA4A9', '#8C6D52']
+const OVERALL_COLOR = '#E97B2E'
 
 type View = 'chart' | 'subjects'
 
 export default function Journey() {
-  const [view, setView] = useState<View>('chart')
-  const [activeSubject, setActiveSubject] = useState<string>('overall')
+  const { child } = useParent()
+  const [params, setParams] = useSearchParams()
+  const view: View = params.get('view') === 'subjects' ? 'subjects' : 'chart'
+  const [active, setActive] = useState<string>('overall')
+
+  const data = useMemo(() => (child?.history ?? []).map(snap => {
+    const vals = Object.values(snap.scores)
+    return {
+      label: snap.label,
+      date: snap.date,
+      ...snap.scores,
+      overall: vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : undefined,
+    }
+  }), [child?.history])
+
+  if (!child) return null
+  const subjects = child.scores.map(s => s.subject)
+  const colorOf = (subj: string) => PALETTE[subjects.indexOf(subj) % PALETTE.length]
+  const summaries = subjectSummaries(child)
+  const first = child.history[0]
+  const last = child.history[child.history.length - 1]
+  const range = first && last ? `${first.label} ${first.date.slice(0, 4)} – ${last.label} ${last.date.slice(0, 4)}` : ''
+
+  if (child.history.length === 0) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Academic Journey" subtitle="Progress over time" />
+        <Card className="p-2">
+          <EmptyState icon={<LineIcon size={40} />} title="The journey starts with the first result" body={`Each time new scores are added, LEIF records a point here so you can see how ${child.name.split(' ')[0]} changes over time.`} />
+        </Card>
+      </div>
+    )
+  }
+
+  // Insights computed from the data shown in the chart (FR-04, FR-08).
+  const best = data.reduce((a, b) => ((b.overall ?? 0) >= (a.overall ?? 0) ? b : a), data[0])
+  const improvements = subjects.map(s => {
+    const firstScore = child.history.find(h => h.scores[s] !== undefined)?.scores[s]
+    const current = last.scores[s]
+    return { subject: s, change: firstScore === undefined || current === undefined ? 0 : current - firstScore }
+  }).sort((a, b) => b.change - a.change)
+  const mostImproved = improvements[0]
+  const watch = [...summaries].sort((a, b) => a.score - b.score)[0]
+  const attendance = attendanceRate(child)
+
+  const seriesToShow = active === 'overall' ? subjects : [active]
 
   return (
-    <div className="px-4 pt-5 pb-4 space-y-5 w-full">
-      <div>
-        <h1 className="text-2xl font-black" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--primary)' }}>
-          Academic Journey
-        </h1>
-        <p className="text-sm mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-          Progress over time · Jan – Sep 2026
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Academic Journey" subtitle={`Progress over time · ${range}`} />
 
-      {/* View toggle */}
-      <div
-        className="flex rounded-xl overflow-hidden p-1 gap-1"
-        style={{ background: 'var(--secondary)' }}
-      >
-        {(['chart', 'subjects'] as View[]).map(v => (
-          <button
-            key={v}
-            onClick={() => setView(v)}
-            className="flex-1 py-2 rounded-lg text-sm font-bold capitalize transition-all"
-            style={{
-              fontFamily: 'Quicksand, sans-serif',
-              background: view === v ? '#fff' : 'transparent',
-              color: view === v ? 'var(--primary)' : 'var(--muted-foreground)',
-              boxShadow: view === v ? '0 1px 4px rgba(13,43,85,0.10)' : 'none',
-            }}
-          >
-            {v === 'chart' ? 'Progress Chart' : 'By Subject'}
-          </button>
-        ))}
+      <div className="max-w-md">
+        <Segmented
+          label="Journey view"
+          value={view}
+          onChange={v => setParams(v === 'subjects' ? { view: v } : {}, { replace: true })}
+          options={[{ value: 'chart', label: 'Progress chart' }, { value: 'subjects', label: 'By subject' }]}
+        />
       </div>
 
       {view === 'chart' && (
         <>
-          {/* Subject selector chips */}
-          <div className="flex gap-2 flex-wrap">
-            {(['overall', 'Math', 'English', 'Science'] as const).map(sub => (
-              <button
-                key={sub}
-                onClick={() => setActiveSubject(sub)}
-                className="px-3 py-1 rounded-full text-xs font-bold transition-all"
-                style={{
-                  fontFamily: 'Quicksand, sans-serif',
-                  background: activeSubject === sub ? subjectColors[sub] : 'var(--secondary)',
-                  color: activeSubject === sub ? '#fff' : 'var(--muted-foreground)',
-                }}
-              >
-                {sub === 'overall' ? 'Overall' : sub}
-              </button>
+          <div className="flex gap-2 flex-wrap" role="group" aria-label="Choose subject">
+            <Chip active={active === 'overall'} onClick={() => setActive('overall')} activeColor={OVERALL_COLOR}>All subjects</Chip>
+            {subjects.map(s => (
+              <Chip key={s} active={active === s} onClick={() => setActive(s)} activeColor={colorOf(s)}>{shortSubject(s)}</Chip>
             ))}
           </div>
 
-          {/* Line chart */}
-          <div
-            className="rounded-2xl p-4"
-            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
-          >
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={journeyData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis
-                  dataKey="term"
-                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)', fontFamily: 'DM Sans, sans-serif' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  domain={[50, 100]}
-                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)', fontFamily: 'DM Sans, sans-serif' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    background: '#fff',
-                    fontSize: 12,
-                    fontFamily: 'Quicksand, sans-serif',
-                    color: 'var(--primary)',
-                  }}
-                />
-                <ReferenceLine y={70} stroke="#E97B2E" strokeDasharray="4 4" label="" />
-                {activeSubject === 'overall' || activeSubject === 'Math' ? (
-                  <Line
-                    type="monotone" dataKey="Math" stroke={subjectColors.Math}
-                    strokeWidth={2} dot={{ r: 3, fill: subjectColors.Math }} activeDot={{ r: 5 }}
-                    name="Maths"
+          <Card className="p-4 sm:p-5">
+            <div className="h-[240px] sm:h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[30, 100]} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12, fontFamily: 'Quicksand, sans-serif', color: 'var(--foreground)' }}
+                    labelStyle={{ color: 'var(--primary)', fontWeight: 700 }}
                   />
-                ) : null}
-                {activeSubject === 'overall' || activeSubject === 'English' ? (
-                  <Line
-                    type="monotone" dataKey="English" stroke={subjectColors.English}
-                    strokeWidth={2} dot={{ r: 3, fill: subjectColors.English }} activeDot={{ r: 5 }}
-                    name="English"
-                  />
-                ) : null}
-                {activeSubject === 'overall' || activeSubject === 'Science' ? (
-                  <Line
-                    type="monotone" dataKey="Science" stroke={subjectColors.Science}
-                    strokeWidth={2} dot={{ r: 3, fill: subjectColors.Science }} activeDot={{ r: 5 }}
-                    name="Science"
-                  />
-                ) : null}
-                {activeSubject === 'overall' ? (
-                  <Line
-                    type="monotone" dataKey="overall" stroke={subjectColors.overall}
-                    strokeWidth={3} dot={{ r: 4, fill: subjectColors.overall }} activeDot={{ r: 6 }}
-                    name="Overall"
-                  />
-                ) : null}
-              </LineChart>
-            </ResponsiveContainer>
+                  <ReferenceLine y={TARGET_SCORE} stroke={OVERALL_COLOR} strokeDasharray="4 4" />
+                  {seriesToShow.map(s => (
+                    <Line
+                      key={s}
+                      type="monotone" dataKey={s} name={shortSubject(s)} stroke={colorOf(s)}
+                      strokeWidth={active === 'overall' ? 1.5 : 3}
+                      strokeOpacity={active === 'overall' ? 0.55 : 1}
+                      dot={{ r: active === 'overall' ? 2 : 4, fill: colorOf(s) }} activeDot={{ r: 5 }}
+                      connectNulls
+                    />
+                  ))}
+                  {active === 'overall' && (
+                    <Line type="monotone" dataKey="overall" name="Average" stroke={OVERALL_COLOR} strokeWidth={3} dot={{ r: 4, fill: OVERALL_COLOR }} activeDot={{ r: 6 }} />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
             <p className="text-xs mt-2 text-center" style={{ color: 'var(--muted-foreground)' }}>
-              Orange dashed line = 70 target threshold
+              Dashed line = {TARGET_SCORE} target{active === 'overall' ? ' · Bold orange line = average across subjects' : ''}
             </p>
-          </div>
+          </Card>
 
-          {/* Progress insight cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <InsightCard label="Best month" value="Jun" note="Overall up to 74" positive />
-            <InsightCard label="Most improved" value="Science" note="+8 pts since Jan" positive />
-            <InsightCard label="Needs watch" value="Maths" note="Dipped below 65 in Mar" positive={false} />
-            <InsightCard label="Streak" value="4 weeks" note="Consistent attendance" positive />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <InsightCard label="Best month" value={best.label} note={`Average reached ${best.overall}`} positive />
+            <InsightCard label="Most improved" value={shortSubject(mostImproved.subject)} note={mostImproved.change > 0 ? `+${mostImproved.change} pts since ${first.label}` : 'No gains yet'} positive={mostImproved.change > 0} />
+            <InsightCard label="Needs watch" value={shortSubject(watch.name)} note={`Currently ${watch.score}/100`} positive={watch.score >= 65} />
+            <InsightCard label="Attendance" value={child.attendance.length ? `${attendance}%` : '—'} note={attendance >= 90 ? 'Consistent attendance' : child.attendance.length ? 'Some days missed' : 'Not recorded yet'} positive={attendance >= 90} />
           </div>
         </>
       )}
 
       {view === 'subjects' && (
-        <div className="space-y-3">
-          {subjects.map(s => (
-            <div
-              key={s.name}
-              className="rounded-xl p-4"
-              style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <p className="font-bold text-sm" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--primary)' }}>
-                  {s.name}
-                </p>
-                <div className="flex items-center gap-1.5">
-                  {s.trend > 0 ? (
-                    <TrendingUp size={13} style={{ color: 'var(--accent)' }} />
-                  ) : s.trend < 0 ? (
-                    <TrendingDown size={13} style={{ color: '#E97B2E' }} />
-                  ) : (
-                    <Minus size={13} style={{ color: 'var(--muted-foreground)' }} />
-                  )}
-                  <span
-                    className="text-xs font-bold"
-                    style={{ color: s.trend > 0 ? 'var(--accent)' : s.trend < 0 ? '#E97B2E' : 'var(--muted-foreground)' }}
-                  >
-                    {s.trend > 0 ? `+${s.trend}` : s.trend === 0 ? '—' : s.trend} pts
+        <div className="grid gap-3 md:grid-cols-2">
+          {summaries.map(s => (
+            <Card key={s.name} className="p-4">
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <p className="font-bold text-sm" style={{ ...display, color: 'var(--primary)' }}>{s.name}</p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Pill t={s.status === 'concern' ? 'warning' : s.status === 'strength' ? 'success' : 'neutral'}>
+                    {s.status === 'concern' ? 'Needs attention' : s.status === 'strength' ? 'Strength' : 'Steady'}
+                  </Pill>
+                  <span className="flex items-center gap-1 text-xs font-bold" style={{ color: s.trend > 0 ? 'var(--accent)' : s.trend < 0 ? 'var(--warning-strong)' : 'var(--muted-foreground)' }}>
+                    {s.trend > 0 ? <TrendingUp size={13} /> : s.trend < 0 ? <TrendingDown size={13} /> : <Minus size={13} />}
+                    {s.trend > 0 ? `+${s.trend}` : s.trend === 0 ? '—' : s.trend}
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--secondary)' }}>
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${s.score}%`,
-                      background: s.status === 'concern' ? '#E97B2E' : s.status === 'strength' ? 'var(--accent)' : 'var(--primary)',
-                    }}
-                  />
+                <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--secondary)' }} role="meter" aria-valuenow={s.score} aria-valuemin={0} aria-valuemax={100} aria-label={`${s.name} score`}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${s.score}%`, background: s.status === 'concern' ? 'var(--warning-strong)' : s.status === 'strength' ? 'var(--accent)' : 'var(--info)' }} />
                 </div>
-                <span
-                  className="text-sm font-black w-8 text-right"
-                  style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--primary)' }}
-                >
-                  {s.score}
-                </span>
+                <span className="text-sm font-black w-8 text-right" style={{ ...display, color: 'var(--primary)' }}>{s.score}</span>
               </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>0</span>
-                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>100</span>
-              </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
@@ -205,20 +153,11 @@ export default function Journey() {
   )
 }
 
-function InsightCard({ label, value, note, positive }: {
-  label: string; value: string; note: string; positive: boolean
-}) {
+function InsightCard({ label, value, note, positive }: { label: string; value: string; note: string; positive: boolean }) {
   return (
-    <div
-      className="rounded-xl p-3.5"
-      style={{ background: positive ? '#F0FDF8' : '#FFF8F3', border: `1px solid ${positive ? '#A8EDDA' : '#F5C5A0'}` }}
-    >
-      <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: positive ? '#0F8A5F' : '#C0521A' }}>
-        {label}
-      </p>
-      <p className="text-lg font-black" style={{ fontFamily: 'Quicksand, sans-serif', color: 'var(--primary)' }}>
-        {value}
-      </p>
+    <div className="rounded-xl p-3.5" style={{ background: positive ? 'var(--success-bg)' : 'var(--warning-bg)', border: `1px solid ${positive ? 'var(--success-border)' : 'var(--warning-border)'}` }}>
+      <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: positive ? 'var(--success)' : 'var(--warning)' }}>{label}</p>
+      <p className="text-lg font-black truncate" style={{ ...display, color: 'var(--primary)' }}>{value}</p>
       <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{note}</p>
     </div>
   )
