@@ -49,6 +49,19 @@ export async function hashPassword(password: string, salt: string) {
   return `fnv-${(h >>> 0).toString(16)}`
 }
 
+/** Tell a class's teachers about a learner who just joined it, and the parent who can now see them. */
+function learnerLinkedNotes(db: DB, s: StudentRecord): AppNotification[] {
+  const teachers = db.teachers.filter(t => teachesStudent(t, s))
+  if (!teachers.length) return []
+  const child = firstName(s.name)
+  return [
+    ...teachers.map(t => notification(t.id, 'info', `New learner in ${s.class}: ${s.name}`,
+      `Learner code ${s.id}. ${s.parentName || 'Their parent'} added them on LEIF, so you can now upload their scores and attendance.`, `/teacher/students/${s.id}`)),
+    ...(s.parentId ? [notification(s.parentId, 'info', `${child} is linked to their class teacher`,
+      `${teachers.length} teacher${teachers.length === 1 ? '' : 's'} at ${s.school} can now see ${child}'s progress and upload results. You control what else is shared under Profile → Privacy.`, '/app/profile')] : []),
+  ]
+}
+
 /** Parents linked to a student whose preferences allow this kind of notification. */
 function parentsOf(db: DB, studentId: string, pref?: keyof NotificationPrefs) {
   return db.parents.filter(p => p.childIds.includes(studentId) && (!pref || p.prefs[pref]))
@@ -92,7 +105,7 @@ export default function LocalStoreProvider({ children }: { children: React.React
     const me = () => sessionRef.current
 
     const newStudent = (input: ChildInput, parent: { id: string; name: string; phone: string }): StudentRecord => ({
-      id: uid('STU'),
+      id: `STU-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
       name: input.name.trim(),
       class: input.class,
       age: input.age,
@@ -152,6 +165,7 @@ export default function LocalStoreProvider({ children }: { children: React.React
           parents: [...d.parents, parent],
           students: [...d.students, child],
           notifications: [
+            ...learnerLinkedNotes(d, child),
             notification(id, 'info', `Welcome to LEIF, ${parent.firstName}!`, `${child.name}'s profile is ready. Add a recent result or wait for their teacher to upload scores.`, '/app/dashboard'),
             ...d.notifications,
           ],
@@ -227,20 +241,31 @@ export default function LocalStoreProvider({ children }: { children: React.React
           ...d,
           students: [...d.students, child],
           parents: d.parents.map(p => (p.id === parent.id ? { ...p, childIds: [...p.childIds, child.id] } : p)),
+          notifications: [...learnerLinkedNotes(d, child), ...d.notifications],
         }))
         setSession(prev => (prev ? { ...prev, activeChildId: child.id } : prev))
         return child.id
       },
 
       updateChild(id, patch) {
-        updateStudent(id, s => ({
-          ...s,
-          ...(patch.name !== undefined && { name: patch.name.trim() }),
-          ...(patch.age !== undefined && { age: patch.age }),
-          ...(patch.class !== undefined && { class: patch.class }),
-          ...(patch.school !== undefined && { school: patch.school.trim() }),
-          ...(patch.learnerPin !== undefined && { learnerPin: patch.learnerPin }),
-        }))
+        update(d => {
+          const before = d.students.find(s => s.id === id)
+          if (!before) return d
+          const after: StudentRecord = {
+            ...before,
+            ...(patch.name !== undefined && { name: patch.name.trim() }),
+            ...(patch.age !== undefined && { age: patch.age }),
+            ...(patch.class !== undefined && { class: patch.class }),
+            ...(patch.school !== undefined && { school: patch.school.trim() }),
+            ...(patch.learnerPin !== undefined && { learnerPin: patch.learnerPin }),
+          }
+          const moved = after.class !== before.class || norm(after.school) !== norm(before.school)
+          return {
+            ...d,
+            students: d.students.map(s => (s.id === id ? after : s)),
+            notifications: moved ? [...learnerLinkedNotes(d, after), ...d.notifications] : d.notifications,
+          }
+        })
       },
 
       updatePrivacy(childId, patch) {

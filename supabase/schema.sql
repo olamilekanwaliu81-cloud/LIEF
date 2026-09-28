@@ -271,6 +271,39 @@ end $$;
 create trigger on_profile_updated after update on public.profiles
   for each row execute function public.sync_parent_contact();
 
+-- When a learner joins (or moves into) a class, tell that class's teachers —
+-- with the learner code — and tell the parent who can now see the child.
+create or replace function public.notify_learner_linked() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare teachers int;
+begin
+  if tg_op = 'UPDATE' and (new.class, new.school) is not distinct from (old.class, old.school) then return new; end if;
+  if coalesce(trim(new.school), '') = '' then return new; end if;
+
+  insert into notifications (user_id, kind, title, body, link)
+  select t.teacher_code, 'info',
+         'New learner in ' || new.class || ': ' || new.name,
+         'Learner code ' || new.id || '. ' || coalesce(nullif(new.parent_name, ''), 'Their parent')
+           || ' added them on LEIF, so you can now upload their scores and attendance.',
+         '/teacher/students/' || new.id
+  from profiles t
+  where t.role = 'teacher' and new.class = any (t.classes) and lower(trim(t.school)) = lower(trim(new.school));
+  get diagnostics teachers = row_count;
+
+  if teachers > 0 and new.parent_id is not null then
+    insert into notifications (user_id, kind, title, body, link)
+    values (new.parent_id::text, 'info',
+            split_part(new.name, ' ', 1) || ' is linked to their class teacher',
+            teachers || ' teacher' || case when teachers = 1 then '' else 's' end || ' at ' || new.school
+              || ' can now see ' || split_part(new.name, ' ', 1) || '''s progress and upload results. You control what else is shared under Profile → Privacy.',
+            '/app/profile');
+  end if;
+  return new;
+end $$;
+
+create trigger on_learner_linked after insert or update of class, school on public.students
+  for each row execute function public.notify_learner_linked();
+
 -- ── Functions the app calls (checked server-side) ──────────────────────────
 
 -- Teacher sign-in uses school + teacher ID; this resolves the login email.

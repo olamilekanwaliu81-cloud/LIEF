@@ -187,7 +187,10 @@ export function TeacherStudents() {
 
   if (!teacher) return null
   const filtered = students
-    .filter(s => s.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter(s => {
+      const q = search.trim().toLowerCase()
+      return s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
+    })
     .filter(s => status === 'all' || s.status === status)
     .filter(s => cls === 'all' || s.class === cls)
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -200,7 +203,7 @@ export function TeacherStudents() {
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="flex-1 relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--muted-foreground)' }} />
-              <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search students…" aria-label="Search students" className="field !pl-9 !py-2.5" />
+              <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or learner code…" aria-label="Search students by name or learner code" className="field !pl-9 !py-2.5" />
             </div>
             <div className="flex gap-2">
               <Dropdown label="Filter by class" value={cls} onChange={setCls} options={[['all', 'All classes'], ...teacher.classes.map(c => [c, c] as [string, string])]} />

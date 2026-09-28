@@ -49,6 +49,8 @@ delete from auth.users where id in (${q(PARENT_UUID)}, ${q(TEACHER_UUID)});`)
 update public.profiles set phone = ${q(parent.phone)}, prefs = ${j(parent.prefs)}, created_at = ${q(parent.createdAt)}, terms_accepted_at = ${q(parent.createdAt)} where id = ${q(PARENT_UUID)};
 update public.profiles set phone = ${q(teacher.phone)}, title = ${q(teacher.title)}, created_at = ${q(teacher.joined)}, terms_accepted_at = ${q(teacher.joined)} where id = ${q(TEACHER_UUID)};`)
 
+  // Demo learners already belong to the class, so skip the "new learner" alerts.
+  out.push('\nalter table public.students disable trigger on_learner_linked;')
   for (const s of db.students) {
     out.push(`
 insert into public.students (id, name, class, gender, age, school, scores, history, attendance, weaknesses, strengths,
@@ -61,6 +63,8 @@ insert into public.score_uploads (student_id, uploaded_by, source, term, scores,
 values (${q(s.id)}, ${q(TEACHER_UUID)}, 'teacher', ${q(s.scores[0]?.term ?? 'Second Term')}, ${j(Object.fromEntries(s.scores.map(x => [x.subject, x.score])))},
   ${arr(s.weaknesses)}, ${arr(s.strengths)}, ${q(s.teacherNote)}, ${q(s.lastUpdated)});`)
   }
+
+  out.push('alter table public.students enable trigger on_learner_linked;')
 
   out.push('\n' + db.announcements.map(a => `insert into public.announcements (id, teacher_id, teacher_code, title, body, class_target, date)
 values (${q(a.id)}, ${q(TEACHER_UUID)}, ${q(a.teacherId)}, ${q(a.title)}, ${q(a.body)}, ${q(a.classTarget)}, ${q(a.date)});`).join('\n'))
