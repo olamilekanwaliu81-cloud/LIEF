@@ -113,7 +113,7 @@ export default function Landing() {
         <div className={`relative ${container} pt-12 lg:pt-20 flex flex-col lg:flex-row lg:items-end lg:gap-12`}>
           <div className="flex-1 pb-12 lg:pb-20 anim-fade-up">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black leading-tight mb-4 lg:mb-6" style={{ ...display, color: '#fff', letterSpacing: '-0.02em' }}>
-              Your child's academic progress —{' '}
+              Your child's academic progress,{' '}
               <span style={{ color: 'var(--accent)' }}>finally clear.</span>
             </h1>
             <p className="text-base lg:text-lg leading-relaxed mb-8 max-w-xl" style={{ color: 'rgba(255,255,255,0.72)' }}>
