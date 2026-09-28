@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { LineChart as LineIcon, Minus, TrendingDown, TrendingUp } from 'lucide-react'
-import { useParent } from '../lib/store'
+import { Track, useParent } from '../lib/store'
 import { TARGET_SCORE, attendanceRate, shortSubject, subjectSummaries } from '../lib/academics'
 import { Callout, Card, Chip, EmptyState, PageHeader, Pill, Segmented, display } from './ui'
 
@@ -63,6 +63,7 @@ export default function Journey() {
 
   return (
     <div className="space-y-6">
+      <Track name="journey_viewed" id={child.id} props={{ points: child.history.length }} />
       <PageHeader title="Academic Journey" subtitle={`Progress over time · ${range}`} />
 
       <div className="max-w-md">

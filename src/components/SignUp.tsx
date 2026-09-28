@@ -2,17 +2,18 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { ArrowRight, CheckCircle2, Lock } from 'lucide-react'
 import { useStore } from '../lib/store'
-import AuthShell, { AuthHeading, StepIndicator, isEmail } from './AuthShell'
+import AuthShell, { AuthHeading, CheckEmail, StepIndicator, isEmail } from './AuthShell'
 import { ChildFields, emptyChild, validateChild, type ChildForm } from './AddChild'
 import { Button, Callout, PasswordField, TextField, display } from './ui'
 
 type Step = 1 | 2 | 3
 
 export default function SignUp() {
-  const { signUpParent } = useStore()
+  const { signUpParent, track } = useStore()
   const navigate = useNavigate()
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)
+  const [confirmEmail, setConfirmEmail] = useState(false)
 
   const [account, setAccount] = useState({ firstName: '', lastName: '', email: '', password: '' })
   const [accountErrors, setAccountErrors] = useState<Partial<Record<keyof typeof account | 'form', string>>>({})
@@ -40,16 +41,18 @@ export default function SignUp() {
 
   const handleFinish = async () => {
     setLoading(true)
-    const error = await signUpParent({
+    const result = await signUpParent({
       ...account,
       child: { name: child.name, age: child.age ? Number(child.age) : undefined, class: child.class, school: child.school },
     })
     setLoading(false)
-    if (error) {
-      setAccountErrors({ form: error })
+    if (result.error !== null) {
+      setAccountErrors({ form: result.error })
       setStep(1)
       return
     }
+    track('onboarding_completed', { role: 'parent' })
+    if (result.confirmEmail) return setConfirmEmail(true)
     navigate('/app/dashboard', { replace: true })
   }
 
@@ -59,6 +62,7 @@ export default function SignUp() {
       panelTitle="Your child's academic progress — finally clear."
       panelPoints={['Free to get started', 'Set up in under 2 minutes', "Your child's data stays private by default"]}
     >
+      {confirmEmail ? <CheckEmail email={account.email.trim()} signInPath="/signin" /> : <>
       <StepIndicator step={step} labels={['Your account', 'Child profile', 'Ready!']} />
 
       {step === 1 && (
@@ -124,6 +128,7 @@ export default function SignUp() {
           </Button>
         </div>
       )}
+      </>}
     </AuthShell>
   )
 }

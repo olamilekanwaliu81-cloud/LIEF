@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { BookOpen, CheckCircle2, ChevronDown, Clock, HelpCircle, Lightbulb, Sprout, TrendingDown, TrendingUp, X } from 'lucide-react'
-import { useParent, useStore } from '../lib/store'
+import { BookOpen, CheckCircle2, ChevronDown, Clock, HelpCircle, Lightbulb, Sprout, ThumbsDown, ThumbsUp, TrendingDown, TrendingUp, X } from 'lucide-react'
+import { Track, useParent, useStore } from '../lib/store'
 import { scoreFor, subjectSummaries } from '../lib/academics'
 import { flagsForSubject, guidanceFor } from '../lib/guidance'
 import { formatShortDate } from '../lib/format'
@@ -10,11 +10,12 @@ import { Button, Callout, Card, Chip, EmptyState, PageHeader, SectionTitle, disp
 
 export default function Support() {
   const { child, actions } = useParent()
-  const { startAction, completeAction, removeAction } = useStore()
+  const { startAction, completeAction, removeAction, track } = useStore()
   const params = useParams()
   const navigate = useNavigate()
   const toast = useToast()
   const [expanded, setExpanded] = useState<number | null>(0)
+  const [feedback, setFeedback] = useState<Record<string, boolean>>({})
 
   if (!child) return null
   const firstName = child.name.split(' ')[0]
@@ -109,7 +110,7 @@ export default function Support() {
                         <div className="mt-3 flex flex-wrap gap-2">
                           {current ? (
                             <>
-                              <Button size="sm" variant="accent" onClick={() => { completeAction(current.id); toast('Marked as done — great work!') }}>
+                              <Button size="sm" variant="accent" onClick={() => { completeAction(current.id); track('action_completed', { subject: subject.name, title: action.title }); toast('Marked as done — great work!') }}>
                                 <CheckCircle2 size={13} /> Mark as done
                               </Button>
                               <Button size="sm" variant="secondary" onClick={() => removeAction(current.id)}>Stop tracking</Button>
@@ -117,6 +118,7 @@ export default function Support() {
                           ) : (
                             <Button size="sm" variant="accent" onClick={() => {
                               startAction(child.id, subject.name, action.title)
+                              track('action_started', { subject: subject.name, title: action.title, tone: guidance.tone })
                               toast(`Tracking “${action.title}” from ${subject.score}/100`)
                             }}>
                               I'll try this ✓
@@ -129,6 +131,21 @@ export default function Support() {
                 )
               })}
             </div>
+          </div>
+
+          <Track name="guidance_viewed" id={`${child.id}:${subject.name}`} props={{ subject: subject.name, tone: guidance.tone, score: subject.score }} />
+          <div className="rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <p className="text-sm font-semibold flex-1 min-w-[12rem]" style={{ color: 'var(--foreground)' }}>
+              {feedback[subject.name] === undefined ? 'Was this guidance useful?' : 'Thanks, your feedback helps improve LEIF.'}
+            </p>
+            {feedback[subject.name] === undefined && (['yes', 'no'] as const).map(v => (
+              <Button key={v} size="sm" variant="secondary" aria-label={v === 'yes' ? 'Yes, useful' : 'Not useful'} onClick={() => {
+                setFeedback(f => ({ ...f, [subject.name]: v === 'yes' }))
+                track('guidance_feedback', { subject: subject.name, useful: v === 'yes' })
+              }}>
+                {v === 'yes' ? <ThumbsUp size={14} /> : <ThumbsDown size={14} />} {v === 'yes' ? 'Yes' : 'Not really'}
+              </Button>
+            ))}
           </div>
 
           <Callout t="info" icon={<BookOpen size={16} />} title="Where this guidance comes from">

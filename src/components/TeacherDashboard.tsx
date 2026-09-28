@@ -433,7 +433,7 @@ export function TeacherScores() {
 }
 
 function ScoreForm({ student }: { student: StudentRecord }) {
-  const { saveScores } = useStore()
+  const { saveScores, track } = useStore()
   const toast = useToast()
   const subjects = Array.from(new Set([...getSubjectsForClass(student.class), ...student.scores.map(s => s.subject)]))
   const [term, setTerm] = useState(student.scores[0]?.term && TERMS.includes(student.scores[0].term) ? student.scores[0].term : TERMS[1])
@@ -455,6 +455,7 @@ function ScoreForm({ student }: { student: StudentRecord }) {
   }
 
   const publish = () => {
+    track('scores_published', { subjects: filled.length, term })
     saveScores(student.id, {
       term,
       scores: Object.fromEntries(filled.map(([k, v]) => [k, Math.round(Number(v))])),

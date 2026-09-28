@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { ArrowRight, CheckCircle2 } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { ALL_CLASSES } from '../data/grades'
-import AuthShell, { AuthHeading, StepIndicator, isEmail } from './AuthShell'
+import AuthShell, { AuthHeading, CheckEmail, StepIndicator, isEmail } from './AuthShell'
 import { PasswordStrength } from './SignUp'
 import { Button, Callout, Chip, PasswordField, TextField, display } from './ui'
 
@@ -17,10 +17,11 @@ const SUBJECTS = [
 ]
 
 export default function TeacherSignUp() {
-  const { signUpTeacher } = useStore()
+  const { signUpTeacher, track } = useStore()
   const navigate = useNavigate()
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)
+  const [confirmEmail, setConfirmEmail] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const [school, setSchool] = useState({ schoolName: '', schoolId: '', teacherId: '' })
@@ -56,9 +57,11 @@ export default function TeacherSignUp() {
 
   const handleFinish = async () => {
     setLoading(true)
-    const error = await signUpTeacher({ ...school, ...profile, subjects, classes })
+    const result = await signUpTeacher({ ...school, ...profile, subjects, classes })
     setLoading(false)
-    if (error) { setErrors({ teacherId: error }); setStep(1); return }
+    if (result.error !== null) { setErrors({ teacherId: result.error }); setStep(1); return }
+    track('onboarding_completed', { role: 'teacher' })
+    if (result.confirmEmail) return setConfirmEmail(true)
     navigate('/teacher/overview', { replace: true })
   }
 
@@ -71,6 +74,7 @@ export default function TeacherSignUp() {
       panelTitle="Help parents support learning at home."
       panelPoints={['Verified with your school-assigned ID', 'Scores publish straight to parent dashboards', 'Announcements reach every parent in your class']}
     >
+      {confirmEmail ? <CheckEmail email={profile.email.trim()} signInPath="/teacher/signin" /> : <>
       <StepIndicator step={step} labels={['School', 'Your profile', 'Ready!']} />
 
       {step === 1 && (
@@ -144,6 +148,7 @@ export default function TeacherSignUp() {
           </Button>
         </div>
       )}
+      </>}
     </AuthShell>
   )
 }

@@ -18,6 +18,7 @@ import Settings from './components/Settings'
 import Notifications from './components/Notifications'
 import AddChild from './components/AddChild'
 import Legal from './components/Legal'
+import ResetPassword from './components/ResetPassword'
 import NotFound from './components/NotFound'
 
 // Charts (recharts) and the teacher/learner areas load on demand, keeping the
@@ -95,6 +96,7 @@ export default function App() {
               <Route path="/teacher/signup" element={<GuestOnly role="teacher"><TeacherSignUp /></GuestOnly>} />
               <Route path="/learner/signin" element={<GuestOnly role="learner"><LearnerSignIn /></GuestOnly>} />
               <Route path="/legal/:doc" element={<Legal />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
               <Route path="/app" element={<RequireRole role="parent"><ParentLayout /></RequireRole>}>
                 <Route index element={<Navigate to="dashboard" replace />} />

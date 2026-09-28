@@ -49,10 +49,11 @@ export function LinkRow({ to, icon, label, last }: { to: string; icon: React.Rea
 }
 
 export function ResetDemoButton() {
-  const { resetDemo } = useStore()
+  const { resetDemo, mode } = useStore()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  if (mode !== 'local') return null
   return (
     <>
       <button onClick={() => setOpen(true)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[var(--secondary)]">

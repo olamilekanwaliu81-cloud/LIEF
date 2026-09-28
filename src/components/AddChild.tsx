@@ -44,12 +44,17 @@ export default function AddChild() {
   const [form, setForm] = useState<ChildForm>(emptyChild)
   const [errors, setErrors] = useState<Partial<Record<keyof ChildForm, string>>>({})
 
-  const submit = (e: React.FormEvent) => {
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     const errs = validateChild(form)
     setErrors(errs)
     if (Object.keys(errs).length) return
-    addChild({ name: form.name, age: form.age ? Number(form.age) : undefined, class: form.class, school: form.school })
+    setSaving(true)
+    const id = await addChild({ name: form.name, age: form.age ? Number(form.age) : undefined, class: form.class, school: form.school })
+    setSaving(false)
+    if (!id) return
     toast(`${form.name.trim()} has been added`)
     navigate('/app/dashboard')
   }
@@ -62,7 +67,7 @@ export default function AddChild() {
           <ChildFields form={form} setForm={setForm} errors={errors} />
           <Callout t="neutral" icon={<Lock size={15} />}>Your child's data is private by default. Only you can see it unless you choose to share access.</Callout>
           <div className="flex gap-2 pt-1">
-            <Button type="submit" variant="accent" size="lg" className="flex-1">Add child <ArrowRight size={16} /></Button>
+            <Button type="submit" variant="accent" size="lg" className="flex-1" loading={saving}>Add child <ArrowRight size={16} /></Button>
             <Button type="button" variant="secondary" size="lg" onClick={() => navigate(-1)}>Cancel</Button>
           </div>
         </form>

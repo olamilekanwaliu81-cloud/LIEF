@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight, Clock, MessageSquareQuote, Plus, Sprout, TrendingDown, TrendingUp } from 'lucide-react'
-import { useParent, useStore } from '../lib/store'
+import { Track, useParent, useStore } from '../lib/store'
 import { attendanceRate, average, recentActivity, subjectSummaries, scoreFor } from '../lib/academics'
 import { formatDate, formatShortDate, greeting } from '../lib/format'
 import { getSubjectsForClass } from '../data/grades'
@@ -10,6 +10,7 @@ import { Button, Callout, Card, EmptyState, Modal, PageHeader, SectionTitle, Sel
 
 export default function Dashboard() {
   const { parent, child, actions } = useParent()
+  const { track } = useStore()
   const navigate = useNavigate()
   const [addOpen, setAddOpen] = useState(false)
   if (!parent || !child) return <NoChild />
@@ -24,6 +25,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <Track name="dashboard_viewed" id={child.id} props={{ concerns: concerns.length, hasScores }} />
       <PageHeader
         eyebrow={`${greeting()}, ${parent.firstName}`}
         title={`${firstName}'s Overview`}
@@ -52,7 +54,7 @@ export default function Dashboard() {
                   {concerns.map(s => (
                     <button
                       key={s.name}
-                      onClick={() => navigate(`/app/support/${encodeURIComponent(s.name)}`)}
+                      onClick={() => { track('concern_opened', { subject: s.name, score: s.score }); navigate(`/app/support/${encodeURIComponent(s.name)}`) }}
                       className="w-full text-left rounded-xl p-4 flex items-center gap-4 transition-all hover:opacity-90 active:scale-[0.99]"
                       style={{ background: 'var(--warning-bg)', border: '1px solid var(--warning-border)' }}
                     >

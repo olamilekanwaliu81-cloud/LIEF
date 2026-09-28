@@ -7,7 +7,7 @@ import { Button, Callout, Card, Modal, PageHeader, SectionTitle, SelectField, Te
 
 export default function Profile() {
   const { parent, child, actions } = useParent()
-  const { updatePrivacy, signOut } = useStore()
+  const { updatePrivacy, signOut, mode } = useStore()
   const navigate = useNavigate()
   const toast = useToast()
   const [editChild, setEditChild] = useState(false)
@@ -203,7 +203,9 @@ export default function Profile() {
           </section>
 
           <Callout t="caution" title="Prototype data">
-            This MVP stores data on this device only. Seeded children like Amara use representative sample data, not real school records.
+            {mode === 'supabase'
+              ? 'Your data is stored securely in LEIF’s cloud database and protected by access rules. Demo children like Amara use representative sample data, not real school records.'
+              : 'This MVP stores data on this device only. Seeded children like Amara use representative sample data, not real school records.'}
           </Callout>
         </div>
       </div>

@@ -350,6 +350,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts(prev => [...prev, { id, message, t }])
     setTimeout(() => setToasts(prev => prev.filter(x => x.id !== id)), 3200)
   }, [])
+  useEffect(() => {
+    const onError = (e: Event) => push((e as CustomEvent<string>).detail, 'warning')
+    window.addEventListener('leif:error', onError)
+    return () => window.removeEventListener('leif:error', onError)
+  }, [push])
   return (
     <ToastContext.Provider value={push}>
       {children}

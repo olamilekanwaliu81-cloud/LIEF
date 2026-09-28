@@ -13,10 +13,14 @@ export default function LearnerSignIn() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
 
-  const submit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!code.trim() || pin.length !== 4) return setError('Enter your learner code and 4-digit PIN.')
-    const err = signInLearner(code, pin)
+    setLoading(true)
+    const err = await signInLearner(code, pin)
+    setLoading(false)
     if (err) return setError(err)
     navigate('/learner', { replace: true })
   }
@@ -37,7 +41,7 @@ export default function LearnerSignIn() {
         <TextField label="Learner code" value={code} onChange={v => { setCode(v.toUpperCase()); setError('') }} placeholder="e.g. STU-001" className="font-mono tracking-wide" autoComplete="username" />
         <TextField label="PIN" type="password" inputMode="numeric" maxLength={4} value={pin} onChange={v => { setPin(v.replace(/\D/g, '')); setError('') }} placeholder="••••" className="font-mono tracking-[0.4em]" autoComplete="current-password" />
         {error && <p role="alert" className="text-sm font-semibold" style={{ color: 'var(--warning)' }}>{error}</p>}
-        <Button type="submit" block size="lg" variant="accent">Let's go <ArrowRight size={17} /></Button>
+        <Button type="submit" block size="lg" variant="accent" loading={loading}>Let's go <ArrowRight size={17} /></Button>
       </form>
 
       <p className="text-center text-xs mt-8" style={{ color: 'var(--muted-foreground)' }}>

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router'
-import { ArrowLeft, CheckCircle2 } from 'lucide-react'
-import { Logo, display } from './ui'
+import { ArrowLeft, CheckCircle2, MailCheck } from 'lucide-react'
+import { Button, Logo, display } from './ui'
 
 export const IMG_FAMILY = 'https://images.unsplash.com/photo-1783378991404-759601c30595?w=900&h=1100&fit=crop&auto=format&q=85'
 
@@ -102,3 +102,23 @@ export function DemoHint({ children, onUse, label = 'Use demo account' }: { chil
 }
 
 export const isEmail = (v: string) => /^\S+@\S+\.\S+$/.test(v.trim())
+
+/** Shown after sign-up when the account must be confirmed by email first. */
+export function CheckEmail({ email, signInPath }: { email: string; signInPath: string }) {
+  const navigate = useNavigate()
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center text-center gap-5">
+      <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: 'var(--accent)' }}>
+        <MailCheck size={38} color="#fff" />
+      </div>
+      <div>
+        <h1 className="text-2xl font-black mb-2" style={{ ...display, color: 'var(--primary)' }}>Check your email</h1>
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+          We sent a confirmation link to <strong style={{ color: 'var(--foreground)' }}>{email}</strong>. Open it on this device to finish setting up your account.
+        </p>
+      </div>
+      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Can’t find it? Check your spam folder.</p>
+      <Button variant="secondary" onClick={() => navigate(signInPath)}>I’ve confirmed. Sign in</Button>
+    </div>
+  )
+}

@@ -14,7 +14,7 @@ const DOCS: Record<string, { title: string; sections: [string, string][] }> = {
       ['Who can see it', "You, any co-guardians you add, and teachers at your child's school who are registered on LEIF. You can switch visibility to “Only me” at any time in Profile → Privacy controls."],
       ['Your controls', 'You can edit your child’s profile, remove co-guardians, stop sharing activity with teachers, and export all data LEIF holds from the Profile page.'],
       ['No automated diagnosis', 'LEIF highlights patterns in scores. It does not diagnose learning difficulties or predict future outcomes.'],
-      ['Prototype storage', 'In this MVP, all data is stored in your browser on this device only. Clearing your browser data removes it.'],
+      ['Where data is stored', 'Data is stored in LEIF’s hosted database (Supabase, EU region) with access rules that limit each account to the children it is allowed to see. Offline demo builds keep data in your browser on this device only.'],
     ],
   },
   terms: {

@@ -8,7 +8,7 @@ import { Button, Card, EmptyState, Logo, Pill, SectionTitle, display, useToast }
 /** Lightweight learner workflow (PRD §11): Journey → Current activity → Complete → Next step. */
 export default function LearnerHome() {
   const learner = useLearner()
-  const { submitAssignment, signOut } = useStore()
+  const { submitAssignment, signOut, track } = useStore()
   const navigate = useNavigate()
   const toast = useToast()
   if (!learner) return null
@@ -23,6 +23,7 @@ export default function LearnerHome() {
 
   const finish = (id: string, title: string) => {
     submitAssignment(id)
+    track('learner_task_completed', { assignment: id })
     toast(`Nice work! “${title}” is done 🎉`)
   }
 
