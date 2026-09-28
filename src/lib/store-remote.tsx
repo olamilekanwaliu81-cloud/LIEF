@@ -92,52 +92,62 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
   const learner = useRef(session<{ code: string; pin: string }>(LEARNER_KEY))
 
   /** Pull everything the signed-in user is allowed to see (RLS decides what that is). */
-  const load = useCallback(async () => {
-    if (learner.current) {
-      const { data, error } = await sb.rpc('learner_get', { p_code: learner.current.code, p_pin: learner.current.pin })
-      if (error || !data) {
-        learner.current = null
-        setSessionItem(LEARNER_KEY, null)
-        setDb(emptyDB()); setSess(null)
-        return
+  const inFlight = useRef<Promise<Session['role'] | null> | null>(null)
+  const signingIn = useRef(false)
+  const load = useCallback((): Promise<Session['role'] | null> => {
+    // Overlapping refresh requests (e.g. several live updates at once) share one round of requests.
+    if (!inFlight.current) inFlight.current = fetchAll().finally(() => { inFlight.current = null })
+    return inFlight.current
+
+    async function fetchAll(): Promise<Session['role'] | null> {
+      if (learner.current) {
+        const { data, error } = await sb.rpc('learner_get', { p_code: learner.current.code, p_pin: learner.current.pin })
+        if (error || !data) {
+          learner.current = null
+          setSessionItem(LEARNER_KEY, null)
+          setDb(emptyDB()); setSess(null)
+          return null
+        }
+        const s = toStudent(data as Row, {})
+        setDb({ ...emptyDB(), students: [s] })
+        setSess({ role: 'learner', userId: s.id })
+        return 'learner'
       }
-      const s = toStudent(data as Row, {})
-      setDb({ ...emptyDB(), students: [s] })
-      setSess({ role: 'learner', userId: s.id })
-      return
+
+      const { data: auth } = await sb.auth.getSession()
+      const user = auth.session?.user
+      if (!user) { setDb(emptyDB()); setSess(null); return null }
+
+      // One parallel round trip; RLS returns empty sets for tables this role can't read.
+      const [profileRes, students, notes, actions, anns, pins] = await Promise.all([
+        sb.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        sb.from('students').select('*').order('name'),
+        sb.from('notifications').select('*').order('date', { ascending: false }).limit(200),
+        sb.from('support_actions').select('*'),
+        sb.from('announcements').select('*').order('date', { ascending: false }),
+        sb.from('learner_pins').select('*'),
+      ])
+      const profile = profileRes.data
+      if (profileRes.error) { reportError(friendly(profileRes.error.message)); return null }
+      if (!profile) { setDb(emptyDB()); setSess(null); return null }
+      const isParent = profile.role === 'parent'
+      const pinMap = Object.fromEntries((pins.data ?? []).map((r: Row) => [r.student_id, r.pin]))
+      const studentList = (students.data ?? []).map((r: Row) => toStudent(r, pinMap))
+
+      setDb({
+        version: 0,
+        parents: isParent ? [toParent(profile, studentList.map(s => s.id))] : [],
+        teachers: isParent ? [] : [toTeacher(profile)],
+        students: studentList,
+        announcements: isParent ? [] : (anns.data ?? []).map(toAnnouncement),
+        notifications: (notes.data ?? []).map(toNotification),
+        actions: (actions.data ?? []).map(toAction),
+      })
+      setSess(prev => isParent
+        ? { role: 'parent', userId: profile.id, activeChildId: prev?.activeChildId ?? session<string>(CHILD_KEY) ?? studentList[0]?.id }
+        : { role: 'teacher', userId: profile.teacher_code })
+      return isParent ? 'parent' : 'teacher'
     }
-
-    const { data: auth } = await sb.auth.getSession()
-    const user = auth.session?.user
-    if (!user) { setDb(emptyDB()); setSess(null); return }
-
-    const { data: profile, error: profileError } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle()
-    if (profileError) { reportError(friendly(profileError.message)); return }
-    if (!profile) { setDb(emptyDB()); setSess(null); return }
-    const isParent = profile.role === 'parent'
-
-    const [students, notes, actions, anns, pins] = await Promise.all([
-      sb.from('students').select('*').order('name'),
-      sb.from('notifications').select('*').order('date', { ascending: false }).limit(200),
-      sb.from('support_actions').select('*'),
-      isParent ? Promise.resolve({ data: [] as Row[] }) : sb.from('announcements').select('*').order('date', { ascending: false }),
-      isParent ? sb.from('learner_pins').select('*') : Promise.resolve({ data: [] as Row[] }),
-    ])
-    const pinMap = Object.fromEntries((pins.data ?? []).map((r: Row) => [r.student_id, r.pin]))
-    const studentList = (students.data ?? []).map((r: Row) => toStudent(r, pinMap))
-
-    setDb({
-      version: 0,
-      parents: isParent ? [toParent(profile, studentList.map(s => s.id))] : [],
-      teachers: isParent ? [] : [toTeacher(profile)],
-      students: studentList,
-      announcements: (anns.data ?? []).map(toAnnouncement),
-      notifications: (notes.data ?? []).map(toNotification),
-      actions: (actions.data ?? []).map(toAction),
-    })
-    setSess(prev => isParent
-      ? { role: 'parent', userId: profile.id, activeChildId: prev?.activeChildId ?? session<string>(CHILD_KEY) ?? studentList[0]?.id }
-      : { role: 'teacher', userId: profile.teacher_code })
   }, [sb])
 
   // Initial load + react to sign-in/out (including from the password-reset email link).
@@ -145,6 +155,8 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
     load().finally(() => setReady(true))
     const { data } = sb.auth.onAuthStateChange(event => {
       // Supabase advises not awaiting its own calls inside this callback.
+      // Our own sign-in functions load right after signing in, so skip the duplicate.
+      if (event === 'SIGNED_IN' && signingIn.current) return
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') setTimeout(load, 0)
     })
     return () => data.subscription.unsubscribe()
@@ -194,22 +206,36 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
 
     const teacher = () => current().teachers[0]
 
+    /** Sign in, then load exactly once with the new session. */
+    async function signInThenLoad(signIn: () => Promise<string | null>) {
+      signingIn.current = true
+      try {
+        const error = await signIn()
+        if (error) return { error, role: null }
+        learner.current = null
+        setSessionItem(LEARNER_KEY, null)
+        if (inFlight.current) await inFlight.current
+        return { error: null, role: await load() }
+      } finally {
+        signingIn.current = false
+      }
+    }
+
     return {
       mode: 'supabase',
       db,
       session: sess,
 
       async signInParent(email, password) {
-        const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password })
-        if (error) return friendly(error.message)
-        const { data: p } = await sb.from('profiles').select('role').eq('id', data.user.id).maybeSingle()
-        if (p?.role !== 'parent') {
+        const { error, role } = await signInThenLoad(async () => {
+          const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password })
+          return error ? friendly(error.message) : null
+        })
+        if (error) return error
+        if (role !== 'parent') {
           await sb.auth.signOut()
           return 'This is a teacher account. Please use the Teacher portal to sign in.'
         }
-        learner.current = null
-        setSessionItem(LEARNER_KEY, null)
-        await load()
         return null
       },
 
@@ -249,11 +275,16 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
         const { data: email, error: lookupError } = await sb.rpc('teacher_login_email', { p_code: teacherId, p_school: school })
         if (lookupError) return friendly(lookupError.message)
         if (!email) return 'We couldn’t find that teacher ID at that school.'
-        const { error } = await sb.auth.signInWithPassword({ email, password })
-        if (error) return /invalid login/i.test(error.message) ? 'Teacher ID or password is incorrect.' : friendly(error.message)
-        learner.current = null
-        setSessionItem(LEARNER_KEY, null)
-        await load()
+        const { error, role } = await signInThenLoad(async () => {
+          const { error } = await sb.auth.signInWithPassword({ email, password })
+          if (!error) return null
+          return /invalid login/i.test(error.message) ? 'Teacher ID or password is incorrect.' : friendly(error.message)
+        })
+        if (error) return error
+        if (role !== 'teacher') {
+          await sb.auth.signOut()
+          return 'This is a parent account. Please use the parent sign-in page.'
+        }
         return null
       },
 
