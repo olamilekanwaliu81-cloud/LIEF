@@ -6,7 +6,7 @@ import { StoreContext, teachesStudent, type TrackEvent } from './store-core'
 
 export { hashPassword } from './store-local'
 export { teachesStudent } from './store-core'
-export type { ChildInput, ParentSignUp, ScoreUpload, SignUpResult, StoreValue, TeacherSignUp } from './store-core'
+export type { ChildInput, ParentSignUp, ScoreUpload, SignUpResult, StoreValue, StudentInput, TeacherSignUp } from './store-core'
 
 /**
  * Uses the Supabase cloud database when VITE_SUPABASE_URL and

@@ -9,13 +9,14 @@ import type {
   ScoreEntry, Snapshot, StudentRecord, SupportAction, TeacherUser,
 } from './types'
 
-export const DB_VERSION = 2
+export const DB_VERSION = 3
 export const DEMO_PASSWORD = 'leif1234'
 export const DEMO_PARENT_EMAIL = 'fatima@leif.demo'
 export const DEMO_TEACHER_ID = 'TCH-0042'
 export const DEMO_TEACHER_SCHOOL = 'Federal Government College, Lagos'
 export const DEMO_LEARNER_CODE = 'STU-001'
 export const DEMO_LEARNER_PIN = '1234'
+export const DEMO_LINK_CODES: Record<string, string> = { 'STU-002': 'KD4P7Q', 'STU-003': 'FB3M9X', 'STU-004': 'EN8R2W', 'STU-005': 'AM5T6Y' }
 
 const SNAPSHOT_DATES = [
   '2026-01-28', '2026-02-25', '2026-03-27', '2026-04-29', '2026-05-28',
@@ -163,6 +164,8 @@ export async function createSeed(hash: (password: string, salt: string) => Promi
       learnerPin: raw.id === DEMO_LEARNER_CODE ? DEMO_LEARNER_PIN : '0000',
       privacy: { visibility: 'family' as const, shareActivityWithTeacher: false, guardians: [] },
       sampleData: false,
+      // Learners whose parents aren't on LEIF yet: the parent connects with these.
+      linkCode: raw.parentId ? undefined : DEMO_LINK_CODES[raw.id],
       status: 'average' as const,
     }
     return { ...record, status: statusFor(record) }

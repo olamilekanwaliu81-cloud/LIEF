@@ -4,7 +4,7 @@ import { todayISO, uid } from './format'
 import { createSeed, DB_VERSION } from './seed'
 import { Splash } from './Splash'
 import {
-  StoreContext, firstName, norm, notification, teachesStudent, withSnapshot,
+  StoreContext, firstName, newLinkCode, norm, notification, teachesStudent, withSnapshot,
   type ChildInput, type StoreValue,
 } from './store-core'
 import type { AppNotification, DB, NotificationPrefs, ParentUser, Session, StudentRecord, SupportAction, TeacherUser } from './types'
@@ -147,7 +147,14 @@ export default function LocalStoreProvider({ children }: { children: React.React
         }
         const id = uid('PAR')
         const name = `${input.firstName} ${input.lastName}`.trim()
-        const child = newStudent(input.child, { id, name, phone: '' })
+        const claim = input.connect && current().students.find(x =>
+          norm(x.id) === norm(input.connect!.code) && !x.parentId && !!x.linkCode && x.linkCode === input.connect!.linkCode.trim().toUpperCase())
+        if (input.connect && !claim) {
+          return { error: 'Those codes don’t match a learner waiting to be connected. Check them with your child’s teacher.' }
+        }
+        const child = claim
+          ? { ...claim, parentId: id, parentName: name, parentPhone: '', linkCode: undefined, learnerPin: claim.learnerPin || String(Math.floor(1000 + Math.random() * 9000)) }
+          : newStudent(input.child!, { id, name, phone: '' })
         const parent: ParentUser = {
           id,
           firstName: input.firstName.trim(),
@@ -163,10 +170,15 @@ export default function LocalStoreProvider({ children }: { children: React.React
         update(d => ({
           ...d,
           parents: [...d.parents, parent],
-          students: [...d.students, child],
+          students: claim ? d.students.map(x => (x.id === child.id ? child : x)) : [...d.students, child],
           notifications: [
-            ...learnerLinkedNotes(d, child),
-            notification(id, 'info', `Welcome to LEIF, ${parent.firstName}!`, `${child.name}'s profile is ready. Add a recent result or wait for their teacher to upload scores.`, '/app/dashboard'),
+            ...(claim
+              ? d.teachers.filter(t => teachesStudent(t, child)).map(t => notification(t.id, 'info', `${name} connected to ${child.name}`,
+                  `The parent can now see ${firstName(child.name)}'s progress on LEIF.`, `/teacher/students/${child.id}`))
+              : learnerLinkedNotes(d, child)),
+            notification(id, 'info', `Welcome to LEIF, ${parent.firstName}!`, claim
+              ? `You're connected to ${child.name}. Everything their teacher has recorded is on your dashboard.`
+              : `${child.name}'s profile is ready. Add a recent result or wait for their teacher to upload scores.`, '/app/dashboard'),
             ...d.notifications,
           ],
         }))
@@ -245,6 +257,31 @@ export default function LocalStoreProvider({ children }: { children: React.React
         }))
         setSession(prev => (prev ? { ...prev, activeChildId: child.id } : prev))
         return child.id
+      },
+
+      async connectChild(code, linkCode) {
+        const s = me()
+        const parent = current().parents.find(p => p.id === s?.userId)
+        if (!parent) return 'Only parent accounts can connect a child.'
+        const student = current().students.find(x =>
+          norm(x.id) === norm(code) && !x.parentId && !!x.linkCode && x.linkCode === linkCode.trim().toUpperCase())
+        if (!student) return 'Those codes don’t match a learner waiting to be connected. Check them with your child’s teacher.'
+        const parentName = `${parent.firstName} ${parent.lastName}`.trim()
+        update(d => ({
+          ...d,
+          students: d.students.map(x => (x.id === student.id
+            ? { ...x, parentId: parent.id, parentName, parentPhone: parent.phone, linkCode: undefined, learnerPin: x.learnerPin || String(Math.floor(1000 + Math.random() * 9000)) }
+            : x)),
+          parents: d.parents.map(p => (p.id === parent.id ? { ...p, childIds: [...p.childIds, student.id] } : p)),
+          notifications: [
+            ...d.teachers.filter(t => teachesStudent(t, student)).map(t => notification(t.id, 'info', `${parentName} connected to ${student.name}`,
+              `The parent can now see ${firstName(student.name)}'s progress on LEIF.`, `/teacher/students/${student.id}`)),
+            notification(parent.id, 'info', `${firstName(student.name)} is connected`, `You can now see everything ${firstName(student.name)}'s teacher has recorded.`, '/app/dashboard'),
+            ...d.notifications,
+          ],
+        }))
+        setSession(prev => (prev ? { ...prev, activeChildId: student.id } : prev))
+        return null
       },
 
       updateChild(id, patch) {
@@ -424,6 +461,22 @@ export default function LocalStoreProvider({ children }: { children: React.React
             notifications: [...notes, ...d.notifications],
           }
         })
+      },
+
+      async addStudent(input) {
+        const t = current().teachers.find(x => x.id === me()?.userId)
+        if (!t) return null
+        const student: StudentRecord = {
+          id: `STU-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+          name: input.name.trim(), class: input.class, age: input.age, gender: input.gender, school: t.school,
+          scores: [], history: [], attendance: [], weaknesses: [], strengths: [], teacherNote: '',
+          lastUpdated: todayISO(), status: 'average', assignments: [],
+          parentName: input.parentName.trim(), parentPhone: input.parentPhone.trim(),
+          learnerPin: '', privacy: { visibility: 'private', shareActivityWithTeacher: false, guardians: [] },
+          sampleData: false, linkCode: newLinkCode(),
+        }
+        update(d => ({ ...d, students: [...d.students, student] }))
+        return student
       },
 
       updateTeacher(patch) {

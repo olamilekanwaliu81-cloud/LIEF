@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { ArrowRight, CheckCircle2, Lock } from 'lucide-react'
 import { useStore } from '../lib/store'
 import AuthShell, { AuthHeading, CheckEmail, StepIndicator, isEmail } from './AuthShell'
-import { ChildFields, emptyChild, validateChild, type ChildForm } from './AddChild'
+import { ChildFields, ChildModeSwitch, ConnectFields, emptyChild, emptyConnect, validateChild, validateConnect, type ChildForm, type ChildMode, type ConnectForm } from './AddChild'
 import { Button, Callout, PasswordField, TextField, display } from './ui'
 
 type Step = 1 | 2 | 3
@@ -32,8 +32,18 @@ export default function SignUp() {
     if (!Object.keys(errs).length) setStep(2)
   }
 
+  const [childMode, setChildMode] = useState<ChildMode>(new URLSearchParams(location.search).get('connect') ? 'connect' : 'new')
+  const [connect, setConnect] = useState<ConnectForm>(emptyConnect)
+  const [connectErrors, setConnectErrors] = useState<Partial<Record<keyof ConnectForm, string>>>({})
+
   const handleStep2 = (e: React.FormEvent) => {
     e.preventDefault()
+    if (childMode === 'connect') {
+      const errs = validateConnect(connect)
+      setConnectErrors(errs)
+      if (!Object.keys(errs).length) setStep(3)
+      return
+    }
     const errs = validateChild(child)
     setChildErrors(errs)
     if (!Object.keys(errs).length) setStep(3)
@@ -43,10 +53,14 @@ export default function SignUp() {
     setLoading(true)
     const result = await signUpParent({
       ...account,
-      child: { name: child.name, age: child.age ? Number(child.age) : undefined, class: child.class, school: child.school },
+      ...(childMode === 'connect'
+        ? { connect }
+        : { child: { name: child.name, age: child.age ? Number(child.age) : undefined, class: child.class, school: child.school } }),
     })
     setLoading(false)
     if (result.error !== null) {
+      // Wrong codes are a step-2 problem; everything else belongs to the account step.
+      if (childMode === 'connect' && /codes/i.test(result.error)) { setConnectErrors({ code: result.error }); setStep(2); return }
       setAccountErrors({ form: result.error })
       setStep(1)
       return
@@ -63,7 +77,7 @@ export default function SignUp() {
       panelPoints={['Free to get started', 'Set up in under 2 minutes', "Your child's data stays private by default"]}
     >
       {confirmEmail ? <CheckEmail email={account.email.trim()} signInPath="/signin" /> : <>
-      <StepIndicator step={step} labels={['Your account', 'Child profile', 'Ready!']} />
+      <StepIndicator step={step} labels={['Your account', 'Your child', 'Ready!']} />
 
       {step === 1 && (
         <form onSubmit={handleStep1} className="space-y-4 flex-1 flex flex-col" noValidate>
@@ -88,8 +102,11 @@ export default function SignUp() {
 
       {step === 2 && (
         <form onSubmit={handleStep2} className="space-y-4 flex-1 flex flex-col" noValidate>
-          <AuthHeading title="Add your child's profile" subtitle="You can always edit this later. Start with the basics." />
-          <ChildFields form={child} setForm={v => { setChild(v); setChildErrors({}) }} errors={childErrors} />
+          <AuthHeading title="Add your child" subtitle="Create their profile, or connect with the codes from their teacher." />
+          <ChildModeSwitch mode={childMode} onChange={setChildMode} />
+          {childMode === 'connect'
+            ? <ConnectFields form={connect} setForm={v => { setConnect(v); setConnectErrors({}) }} errors={connectErrors} />
+            : <ChildFields form={child} setForm={v => { setChild(v); setChildErrors({}) }} errors={childErrors} />}
           <Callout t="neutral" icon={<Lock size={15} />}>Your child's data is private by default. Only you can see it unless you choose to share access.</Callout>
           <div className="mt-auto pt-4">
             <Button type="submit" block size="lg">Continue <ArrowRight size={17} /></Button>
@@ -107,7 +124,9 @@ export default function SignUp() {
               You're all set, {account.firstName.trim() || 'there'}!
             </h1>
             <p className="text-sm leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
-              {child.name.trim() || 'Your child'}'s profile is ready. Head to the dashboard to add a first result or see teacher updates.
+              {childMode === 'connect'
+                ? 'We’ll connect you to your child’s record so you can see everything their teacher has recorded.'
+                : `${child.name.trim() || 'Your child'}'s profile is ready. Head to the dashboard to add a first result or see teacher updates.`}
             </p>
           </div>
           <div className="rounded-xl px-5 py-4 w-full text-left" style={{ background: 'var(--secondary)', border: '1px solid var(--border)' }}>
@@ -115,9 +134,15 @@ export default function SignUp() {
             <div className="space-y-1.5">
               <SummaryRow label="Parent" value={`${account.firstName} ${account.lastName}`.trim()} />
               <SummaryRow label="Email" value={account.email.trim()} />
-              <SummaryRow label="Child" value={child.name.trim()} />
-              <SummaryRow label="Class" value={child.class} />
-              {child.school && <SummaryRow label="School" value={child.school} />}
+              {childMode === 'connect' ? (
+                <SummaryRow label="Learner code" value={connect.code} />
+              ) : (
+                <>
+                  <SummaryRow label="Child" value={child.name.trim()} />
+                  <SummaryRow label="Class" value={child.class} />
+                  {child.school && <SummaryRow label="School" value={child.school} />}
+                </>
+              )}
             </div>
           </div>
           <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>

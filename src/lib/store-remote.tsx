@@ -4,7 +4,7 @@ import { average, scoreFor, statusFor, subjectStatus } from './academics'
 import { todayISO, uid } from './format'
 import { Splash } from './Splash'
 import {
-  StoreContext, emptyDB, firstName, reportError, teacherDisplayName, teachesStudent, withSnapshot,
+  StoreContext, emptyDB, firstName, newLinkCode, reportError, teacherDisplayName, teachesStudent, withSnapshot,
   type StoreValue,
 } from './store-core'
 import type {
@@ -36,6 +36,7 @@ function toStudent(r: Row, pins: Record<string, string>): StudentRecord {
     lastUpdated: r.last_updated, status: r.status, assignments: r.assignments,
     parentName: r.parent_name, parentPhone: r.parent_phone, parentId: r.parent_id ?? undefined,
     learnerPin: pins[r.id] ?? '', privacy: r.privacy, sampleData: r.sample_data,
+    linkCode: r.link_code ?? undefined,
   }
 }
 
@@ -247,7 +248,9 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
             emailRedirectTo: `${location.origin}/app/dashboard`,
             data: {
               role: 'parent', accepted_terms: true, first_name: input.firstName.trim(), last_name: input.lastName.trim(),
-              child: { name: input.child.name.trim(), class: input.child.class, age: input.child.age ?? '', school: input.child.school.trim() },
+              ...(input.child && {
+                child: { name: input.child.name.trim(), class: input.child.class, age: input.child.age ?? '', school: input.child.school.trim() },
+              }),
             },
           },
         })
@@ -255,6 +258,12 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
         // With email confirmation on, an existing address comes back with no identities.
         if (data.user && data.user.identities?.length === 0) return { error: 'An account with this email already exists. Try signing in instead.' }
         if (!data.session) return { error: null, confirmEmail: true }
+        if (input.connect) {
+          const { data: id, error: claimError } = await sb.rpc('claim_learner', { p_code: input.connect.code.trim(), p_link: input.connect.linkCode.trim() })
+          // The account exists either way; the parent can retry from "Add a child".
+          if (claimError) reportError(`Your account is ready, but connecting failed: ${friendly(claimError.message)}`)
+          else setSessionItem(CHILD_KEY, id as string)
+        }
         await load()
         return { error: null, confirmEmail: false }
       },
@@ -350,6 +359,15 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
         setSess(s => (s ? { ...s, activeChildId: data.id } : s))
         await load()
         return data.id
+      },
+
+      async connectChild(code, linkCode) {
+        const { data, error } = await sb.rpc('claim_learner', { p_code: code.trim(), p_link: linkCode.trim() })
+        if (error) return friendly(error.message)
+        setSessionItem(CHILD_KEY, data as string)
+        setSess(s => (s ? { ...s, activeChildId: data as string } : s))
+        await load()
+        return null
       },
 
       updateChild(id, patch) {
@@ -541,6 +559,21 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
         })).then(ok => {
           if (ok) notifyParents(studentId, 'scores', 'score', `${a.subject} work marked`, `${firstName(s.name)} scored ${score}/100 on “${a.title}”.`, '/app/dashboard')
         })
+      },
+
+      async addStudent(input) {
+        const t = teacher()
+        const { data: auth } = await sb.auth.getSession()
+        if (!t || !auth.session) return null
+        const { data, error } = await sb.from('students').insert({
+          name: input.name.trim(), class: input.class, age: input.age ?? null, gender: input.gender ?? null,
+          school: t.school, parent_id: null, parent_name: input.parentName.trim(), parent_phone: input.parentPhone.trim(),
+          link_code: newLinkCode(), added_by: auth.session.user.id, sample_data: false,
+        }).select('*').single()
+        if (error || !data) { console.error(error); reportError('Couldn’t add that student. Please try again.'); return null }
+        const student = toStudent(data as Row, {})
+        setDb(d => ({ ...d, students: [...d.students, student] }))
+        return student
       },
 
       updateTeacher(patch) {

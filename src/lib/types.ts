@@ -49,6 +49,8 @@ export interface StudentRecord {
   privacy: Privacy
   /** True when the record was created by a parent and has no teacher data yet. */
   sampleData: boolean
+  /** One-time code a parent uses to connect to a learner their teacher added. */
+  linkCode?: string
 }
 
 export interface NotificationPrefs {

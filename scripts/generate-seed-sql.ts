@@ -54,10 +54,10 @@ update public.profiles set phone = ${q(teacher.phone)}, title = ${q(teacher.titl
   for (const s of db.students) {
     out.push(`
 insert into public.students (id, name, class, gender, age, school, scores, history, attendance, weaknesses, strengths,
-  teacher_note, last_updated, status, assignments, parent_name, parent_phone, parent_id, privacy, sample_data)
+  teacher_note, last_updated, status, assignments, parent_name, parent_phone, parent_id, privacy, sample_data, link_code)
 values (${q(s.id)}, ${q(s.name)}, ${q(s.class)}, ${q(s.gender)}, ${s.age ?? 'null'}, ${q(s.school)}, ${j(s.scores)}, ${j(s.history)},
   ${j(s.attendance)}, ${arr(s.weaknesses)}, ${arr(s.strengths)}, ${q(s.teacherNote)}, ${q(s.lastUpdated)}, ${q(s.status)},
-  ${j(s.assignments)}, ${q(s.parentName)}, ${q(s.parentPhone)}, ${s.parentId ? q(appId(s.parentId)) : 'null'}, ${j(s.privacy)}, false);
+  ${j(s.assignments)}, ${q(s.parentName)}, ${q(s.parentPhone)}, ${s.parentId ? q(appId(s.parentId)) : 'null'}, ${j(s.privacy)}, false, ${q(s.linkCode)});
 insert into public.learner_pins (student_id, pin) values (${q(s.id)}, ${q(s.learnerPin)});
 insert into public.score_uploads (student_id, uploaded_by, source, term, scores, weaknesses, strengths, note, created_at)
 values (${q(s.id)}, ${q(TEACHER_UUID)}, 'teacher', ${q(s.scores[0]?.term ?? 'Second Term')}, ${j(Object.fromEntries(s.scores.map(x => [x.subject, x.score])))},

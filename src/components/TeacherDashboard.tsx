@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   AlertTriangle, ArrowLeft, BarChart2, CalendarCheck, CheckCircle2, ChevronDown, ChevronRight, Clock,
-  ClipboardList, Edit3, LogOut, Megaphone, Phone, Plus, Search, Sprout, Trash2, Upload, Users, X,
+  ClipboardList, Copy, Edit3, Link2, LogOut, Megaphone, Phone, Plus, Search, Sprout, Trash2, Upload, UserPlus, Users, X,
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useStore, useTeacher } from '../lib/store'
@@ -34,16 +34,108 @@ function Avatar({ s, size = 40 }: { s: StudentRecord; size?: number }) {
   )
 }
 
-function NoStudents() {
+function NoStudents({ action }: { action?: React.ReactNode }) {
   const { teacher } = useTeacher()
   return (
     <Card className="p-2">
       <EmptyState
         icon={<Users size={40} />}
         title="No students in your classes yet"
-        body={`Students appear here when a parent registers their child at ${teacher?.school ?? 'your school'} in ${teacher?.classes.join(' or ') ?? 'your classes'}.`}
+        body={`Students appear here when a parent registers their child at ${teacher?.school ?? 'your school'} in ${teacher?.classes.join(' or ') ?? 'your classes'}, or when you add them yourself.`}
+        action={action}
       />
     </Card>
+  )
+}
+
+/** Teacher adds a learner before any parent has joined LEIF. */
+function AddStudentForm({ onAdded, onCancel }: { onAdded: (s: StudentRecord) => void; onCancel: () => void }) {
+  const { teacher } = useTeacher()
+  const { addStudent } = useStore()
+  const [form, setForm] = useState({ name: '', class: teacher?.classes.length === 1 ? teacher.classes[0] : '', age: '', gender: '', parentName: '', parentPhone: '' })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  if (!teacher) return null
+  const set = (k: keyof typeof form) => (v: string) => { setForm(f => ({ ...f, [k]: v })); setErrors({}) }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const errs: Record<string, string> = {}
+    if (form.name.trim().split(/\s+/).length < 2) errs.name = 'Enter the learner’s first and last name.'
+    if (!form.class) errs.class = 'Choose a class.'
+    if (form.age && (Number(form.age) < 2 || Number(form.age) > 19)) errs.age = 'Enter an age between 2 and 19.'
+    setErrors(errs)
+    if (Object.keys(errs).length) return
+    setSaving(true)
+    const student = await addStudent({
+      name: form.name, class: form.class, age: form.age ? Number(form.age) : undefined,
+      gender: form.gender === 'M' || form.gender === 'F' ? form.gender : undefined,
+      parentName: form.parentName, parentPhone: form.parentPhone,
+    })
+    setSaving(false)
+    if (student) onAdded(student)
+  }
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <form onSubmit={submit} className="space-y-4" noValidate>
+        <p className="text-sm font-black" style={{ ...display, color: 'var(--foreground)' }}>Add a student</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField label="Full name *" value={form.name} onChange={set('name')} placeholder="e.g. Tunde Bakare" error={errors.name} />
+          <SelectField label="Class *" value={form.class} onChange={set('class')} error={errors.class}>
+            <option value="">Select class</option>
+            {teacher.classes.map(c => <option key={c} value={c}>{c}</option>)}
+          </SelectField>
+          <TextField label="Age" type="number" inputMode="numeric" value={form.age} onChange={set('age')} placeholder="e.g. 9" error={errors.age} />
+          <SelectField label="Gender" value={form.gender} onChange={set('gender')}>
+            <option value="">Prefer not to say</option>
+            <option value="F">Female</option>
+            <option value="M">Male</option>
+          </SelectField>
+          <TextField label="Parent / guardian name" value={form.parentName} onChange={set('parentName')} placeholder="Optional" autoComplete="off" />
+          <TextField label="Parent phone" type="tel" value={form.parentPhone} onChange={set('parentPhone')} placeholder="Optional, e.g. +234 …" autoComplete="off" />
+        </div>
+        <Callout t="info" icon={<Link2 size={15} />}>
+          The student joins {teacher.school}. You’ll get a code to give the parent so they can connect on LEIF and see this child’s progress.
+        </Callout>
+        <div className="flex gap-2">
+          <Button type="submit" variant="accent" className="flex-1" loading={saving}><UserPlus size={15} /> Add student</Button>
+          <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+/** The two codes a parent needs to connect to a learner the teacher added. */
+function ParentConnectCard({ student, title }: { student: StudentRecord; title: string }) {
+  const toast = useToast()
+  if (student.parentId || !student.linkCode) return null
+  const message = `Hello${student.parentName ? ` ${student.parentName}` : ''}, ${student.name} is on LEIF, where you can follow their progress at school. `
+    + `Create a free parent account at ${location.origin}/signup?connect=1 and enter learner code ${student.id} and link code ${student.linkCode}.`
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(message); toast('Message copied. Paste it into SMS or WhatsApp') }
+    catch { toast('Couldn’t copy. Select the codes and copy them manually', 'warning') }
+  }
+  return (
+    <div className="rounded-xl p-4 space-y-3" style={{ background: 'var(--caution-bg)', border: '1px solid var(--caution-border)' }}>
+      <div className="flex items-start gap-2">
+        <Link2 size={16} className="mt-0.5 shrink-0" style={{ color: 'var(--caution)' }} />
+        <div>
+          <p className="text-sm font-bold" style={{ ...display, color: 'var(--foreground)' }}>{title}</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Give these to the parent. They sign up on LEIF and choose “I have a code”.</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {[['Learner code', student.id], ['Parent link code', student.linkCode]].map(([label, value]) => (
+          <div key={label} className="rounded-lg px-3 py-2" style={{ background: 'var(--surface)' }}>
+            <p className="text-xs font-bold" style={{ color: 'var(--muted-foreground)' }}>{label}</p>
+            <p className="text-base font-black font-mono tracking-wider select-all" style={{ color: 'var(--primary)' }}>{value}</p>
+          </div>
+        ))}
+      </div>
+      <Button size="sm" variant="secondary" onClick={copy}><Copy size={13} /> Copy message for the parent</Button>
+    </div>
   )
 }
 
@@ -184,8 +276,12 @@ export function TeacherStudents() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<PerformanceStatus | 'all'>('all')
   const [cls, setCls] = useState('all')
+  const [adding, setAdding] = useState(false)
+  const [added, setAdded] = useState<StudentRecord | null>(null)
+  const navigate = useNavigate()
 
   if (!teacher) return null
+  const addButton = !adding && <Button variant="accent" onClick={() => { setAdded(null); setAdding(true) }}><UserPlus size={15} /> Add student</Button>
   const filtered = students
     .filter(s => {
       const q = search.trim().toLowerCase()
@@ -197,8 +293,21 @@ export function TeacherStudents() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Students" subtitle={`${students.length} learner${students.length === 1 ? '' : 's'} across ${teacher.classes.join(', ')}`} />
-      {students.length === 0 ? <NoStudents /> : (
+      <PageHeader title="Students" subtitle={`${students.length} learner${students.length === 1 ? '' : 's'} across ${teacher.classes.join(', ')}`} action={students.length > 0 ? addButton : undefined} />
+
+      {adding && <AddStudentForm onCancel={() => setAdding(false)} onAdded={s => { setAdding(false); setAdded(s) }} />}
+      {added && (
+        <div className="space-y-2">
+          <ParentConnectCard student={students.find(s => s.id === added.id) ?? added} title={`${added.name} was added to ${added.class}`} />
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => navigate(`/teacher/students/${added.id}`)}>Open {added.name.split(' ')[0]}’s profile</Button>
+            <Button size="sm" variant="ghost" onClick={() => { setAdded(null); setAdding(true) }}><Plus size={13} /> Add another</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAdded(null)}>Done</Button>
+          </div>
+        </div>
+      )}
+
+      {students.length === 0 ? (!adding && !added && <NoStudents action={addButton} />) : (
         <>
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="flex-1 relative">
@@ -228,6 +337,7 @@ export function TeacherStudents() {
                       <div className="flex items-center gap-2 flex-wrap mt-0.5">
                         <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.class}</span>
                         <Pill t={cfg.tone}>{s.scores.length ? cfg.label : 'No scores yet'}</Pill>
+                        {!s.parentId && <Pill t="caution">No parent yet</Pill>}
                         {missing > 0 && <span className="text-xs font-bold" style={{ color: 'var(--warning)' }}>{missing} missing</span>}
                       </div>
                     </div>
@@ -288,6 +398,8 @@ export function TeacherStudentDetail() {
         </div>
         <Button variant="accent" size="sm" onClick={() => navigate(`/teacher/scores/${s.id}`)}><Upload size={13} /> Update scores</Button>
       </div>
+
+      <ParentConnectCard student={s} title="Not connected to a parent yet" />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-start">
         <div className="space-y-4">

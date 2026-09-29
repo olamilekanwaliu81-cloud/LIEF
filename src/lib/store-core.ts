@@ -14,7 +14,10 @@ export interface ParentSignUp {
   lastName: string
   email: string
   password: string
-  child: ChildInput
+  /** Either create a new child profile… */
+  child?: ChildInput
+  /** …or connect to a learner the teacher already added. */
+  connect?: { code: string; linkCode: string }
 }
 
 export interface TeacherSignUp {
@@ -27,6 +30,21 @@ export interface TeacherSignUp {
   password: string
   subjects: string[]
   classes: string[]
+}
+
+export interface StudentInput {
+  name: string
+  class: string
+  age?: number
+  gender?: 'M' | 'F'
+  parentName: string
+  parentPhone: string
+}
+
+/** Short, unambiguous code (no 0/O, 1/I) for parents to type in. */
+export function newLinkCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
 export interface ScoreUpload {
@@ -58,6 +76,8 @@ export interface StoreValue {
   // parent
   setActiveChild: (id: string) => void
   addChild: (input: ChildInput) => Promise<string | null>
+  /** Parent connects to a learner their teacher already added (learner code + link code). */
+  connectChild: (code: string, linkCode: string) => Promise<Result>
   updateChild: (id: string, patch: Partial<ChildInput> & { learnerPin?: string }) => void
   updatePrivacy: (childId: string, patch: Partial<Privacy>) => void
   updateParent: (patch: Partial<Pick<ParentUser, 'firstName' | 'lastName' | 'phone' | 'language'>>) => void
@@ -76,6 +96,8 @@ export interface StoreValue {
   deleteAnnouncement: (id: string) => void
   createAssignment: (input: { title: string; subject: string; dueDate: string; classTarget: string }) => void
   gradeAssignment: (studentId: string, assignmentId: string, score: number) => void
+  /** Teacher adds a learner before any parent has joined; returns the new record. */
+  addStudent: (input: StudentInput) => Promise<StudentRecord | null>
   updateTeacher: (patch: Partial<Pick<TeacherUser, 'firstName' | 'lastName' | 'email' | 'phone'>>) => void
   // learner
   submitAssignment: (assignmentId: string) => void

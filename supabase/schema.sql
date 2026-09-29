@@ -64,6 +64,9 @@ create table public.students (
   parent_id     uuid references public.profiles (id) on delete cascade,
   privacy       jsonb not null default '{"visibility":"private","shareActivityWithTeacher":false,"guardians":[]}',
   sample_data   boolean not null default true,
+  -- set when a teacher adds a learner before any parent: the parent connects with this code
+  link_code     text,
+  added_by      uuid references public.profiles (id) on delete set null,
   created_at    timestamptz not null default now()
 );
 
@@ -180,6 +183,8 @@ create policy "own profile: update" on public.profiles for update using (id = au
 create policy "students: read"   on public.students for select
   using (parent_id = auth.uid() or public.teaches(class, school) or public.is_guardian(privacy));
 create policy "students: parent adds"   on public.students for insert with check (parent_id = auth.uid());
+create policy "students: teacher adds"  on public.students for insert
+  with check (parent_id is null and added_by = auth.uid() and public.teaches(class, school));
 create policy "students: parent or teacher updates" on public.students for update
   using (parent_id = auth.uid() or public.teaches(class, school));
 create policy "students: parent removes" on public.students for delete using (parent_id = auth.uid());
@@ -283,13 +288,21 @@ begin
   insert into notifications (user_id, kind, title, body, link)
   select t.teacher_code, 'info',
          'New learner in ' || new.class || ': ' || new.name,
-         'Learner code ' || new.id || '. ' || coalesce(nullif(new.parent_name, ''), 'Their parent')
-           || ' added them on LEIF, so you can now upload their scores and attendance.',
+         'Learner code ' || new.id || '. '
+           || case when new.parent_id is null
+                then 'Added by a colleague at your school, so you can now upload their scores and attendance.'
+                else coalesce(nullif(new.parent_name, ''), 'Their parent') || ' added them on LEIF, so you can now upload their scores and attendance.'
+              end,
          '/teacher/students/' || new.id
   from profiles t
-  where t.role = 'teacher' and new.class = any (t.classes) and lower(trim(t.school)) = lower(trim(new.school));
+  where t.role = 'teacher' and new.class = any (t.classes) and lower(trim(t.school)) = lower(trim(new.school))
+    and t.id is distinct from auth.uid();
   get diagnostics teachers = row_count;
 
+  if new.parent_id is not null then
+    select count(*) into teachers from profiles t
+    where t.role = 'teacher' and new.class = any (t.classes) and lower(trim(t.school)) = lower(trim(new.school));
+  end if;
   if teachers > 0 and new.parent_id is not null then
     insert into notifications (user_id, kind, title, body, link)
     values (new.parent_id::text, 'info',
@@ -402,6 +415,39 @@ begin
   return to_jsonb(s);
 end $$;
 
+-- Parent connects to a learner their child's teacher already added.
+create or replace function public.claim_learner(p_code text, p_link text) returns text
+language plpgsql security definer set search_path = public as $$
+declare me profiles; s students;
+begin
+  select * into me from profiles where id = auth.uid() and role = 'parent';
+  if not found then raise exception 'Only parent accounts can connect a child.'; end if;
+
+  select * into s from students
+  where upper(id) = upper(trim(p_code)) and parent_id is null
+    and link_code is not null and link_code = upper(trim(p_link));
+  if not found then raise exception 'Those codes don’t match a learner waiting to be connected. Check them with your child’s teacher.'; end if;
+
+  update students set parent_id = me.id, link_code = null,
+         parent_name = trim(me.first_name || ' ' || me.last_name), parent_phone = me.phone
+  where id = s.id;
+
+  insert into learner_pins (student_id, pin)
+  values (s.id, lpad((floor(random() * 9000) + 1000)::int::text, 4, '0'))
+  on conflict (student_id) do nothing;
+
+  insert into notifications (user_id, kind, title, body, link)
+  select t.teacher_code, 'info', trim(me.first_name || ' ' || me.last_name) || ' connected to ' || s.name,
+         'The parent can now see ' || split_part(s.name, ' ', 1) || '''s progress on LEIF.', '/teacher/students/' || s.id
+  from profiles t
+  where t.role = 'teacher' and s.class = any (t.classes) and lower(trim(t.school)) = lower(trim(s.school));
+
+  insert into notifications (user_id, kind, title, body, link)
+  values (me.id::text, 'info', split_part(s.name, ' ', 1) || ' is connected',
+          'You can now see everything ' || split_part(s.name, ' ', 1) || '''s teacher has recorded.', '/app/dashboard');
+  return s.id;
+end $$;
+
 -- ── Permissions ────────────────────────────────────────────────────────────
 revoke all on all tables in schema public from anon;
 grant select, insert, update, delete on all tables in schema public to authenticated;
@@ -413,6 +459,7 @@ grant insert on public.events to anon;
 revoke execute on all functions in schema public from public;
 grant execute on function public.my_app_id(), public.teaches(text, text), public.is_guardian(jsonb), public.owns_student(text) to authenticated;
 grant execute on function public.notify_parents(text, text, text, text, text, text), public.notify_class_parents(text[], text, text, text), public.notify_teachers(text, text, text, text, text) to authenticated;
+grant execute on function public.claim_learner(text, text) to authenticated;
 grant execute on function public.teacher_login_email(text, text), public.teacher_code_taken(text), public.learner_get(text, text), public.learner_submit(text, text, text) to anon, authenticated;
 
 -- ── Live updates ───────────────────────────────────────────────────────────
