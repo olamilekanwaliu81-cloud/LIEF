@@ -122,7 +122,7 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
       // One parallel round trip; RLS returns empty sets for tables this role can't read.
       const [profileRes, students, notes, actions, anns, pins] = await Promise.all([
         sb.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-        sb.from('students').select('*').order('name'),
+        sb.from('students').select('*').order('created_at'),
         sb.from('notifications').select('*').order('date', { ascending: false }).limit(200),
         sb.from('support_actions').select('*'),
         sb.from('announcements').select('*').order('date', { ascending: false }),
@@ -145,7 +145,12 @@ export default function RemoteStoreProvider({ client, children }: { client: Supa
         actions: (actions.data ?? []).map(toAction),
       })
       setSess(prev => isParent
-        ? { role: 'parent', userId: profile.id, activeChildId: prev?.activeChildId ?? session<string>(CHILD_KEY) ?? studentList[0]?.id }
+        ? {
+          role: 'parent', userId: profile.id,
+          // Default to the parent's own first child, not one shared with them.
+          activeChildId: prev?.activeChildId ?? session<string>(CHILD_KEY)
+            ?? (studentList.find(s => s.parentId === profile.id) ?? studentList[0])?.id,
+        }
         : { role: 'teacher', userId: profile.teacher_code })
       return isParent ? 'parent' : 'teacher'
     }

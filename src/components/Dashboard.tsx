@@ -9,7 +9,7 @@ import ScoreRing from './ScoreRing'
 import { Button, Callout, Card, EmptyState, Modal, PageHeader, SectionTitle, SelectField, TextField, display, useToast } from './ui'
 
 export default function Dashboard() {
-  const { parent, child, actions } = useParent()
+  const { parent, child, actions, canEdit } = useParent()
   const { track } = useStore()
   const navigate = useNavigate()
   const [addOpen, setAddOpen] = useState(false)
@@ -30,7 +30,7 @@ export default function Dashboard() {
         eyebrow={`${greeting()}, ${parent.firstName}`}
         title={`${firstName}'s Overview`}
         subtitle={[child.class, child.school, hasScores && `Updated ${formatDate(child.lastUpdated)}`].filter(Boolean).join(' · ')}
-        action={child.sampleData && hasScores ? <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)}><Plus size={14} /> Add result</Button> : undefined}
+        action={canEdit && child.sampleData && hasScores ? <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)}><Plus size={14} /> Add result</Button> : undefined}
       />
 
       {!hasScores ? (
@@ -39,7 +39,7 @@ export default function Dashboard() {
             icon={<Sprout size={40} />}
             title={`No results for ${firstName} yet`}
             body={`When ${firstName}'s teacher uploads scores on LEIF they'll appear here automatically. You can also add a recent result from a report card or test.`}
-            action={<Button variant="accent" onClick={() => setAddOpen(true)}><Plus size={15} /> Add a result</Button>}
+            action={canEdit ? <Button variant="accent" onClick={() => setAddOpen(true)}><Plus size={15} /> Add a result</Button> : undefined}
           />
         </Card>
       ) : (

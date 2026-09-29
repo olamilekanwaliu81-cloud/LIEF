@@ -16,6 +16,7 @@ export const DEMO_TEACHER_ID = 'TCH-0042'
 export const DEMO_TEACHER_SCHOOL = 'Federal Government College, Lagos'
 export const DEMO_LEARNER_CODE = 'STU-001'
 export const DEMO_LEARNER_PIN = '1234'
+export const DEMO_CHILD_IDS = ['STU-001', 'STU-002', 'STU-003', 'STU-004', 'STU-005']
 export const DEMO_LINK_CODES: Record<string, string> = { 'STU-002': 'KD4P7Q', 'STU-003': 'FB3M9X', 'STU-004': 'EN8R2W', 'STU-005': 'AM5T6Y' }
 
 const SNAPSHOT_DATES = [

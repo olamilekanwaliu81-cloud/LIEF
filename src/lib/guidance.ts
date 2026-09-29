@@ -110,8 +110,8 @@ export interface Guidance {
 /** Guidance tied to the child's actual data for one subject (FR-06, FR-08). */
 export function guidanceFor(childName: string, subject: SubjectSummary, teacherFlags: string[]): Guidance {
   const cat = categoryFor(subject.name)
-  const trendText = subject.trend < 0
-    ? `down ${Math.abs(subject.trend)} points since the last update`
+  const trendText = !subject.hasPrevious ? 'the first result recorded'
+    : subject.trend < 0 ? `down ${Math.abs(subject.trend)} points since the last update`
     : subject.trend > 0 ? `up ${subject.trend} points since the last update` : 'steady since the last update'
   const flags = teacherFlags.length ? ` Their teacher has noted: ${teacherFlags.join(', ').toLowerCase()}.` : ''
 

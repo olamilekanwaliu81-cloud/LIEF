@@ -11,6 +11,8 @@ export interface SubjectSummary {
   score: number
   trend: number
   status: SubjectStatus
+  /** False when this is the first result recorded for the subject. */
+  hasPrevious: boolean
 }
 
 export function average(s: StudentRecord) {
@@ -44,7 +46,7 @@ export function subjectSummaries(s: StudentRecord): SubjectSummary[] {
   return s.scores.map(sc => {
     const before = prev[sc.subject]
     const trend = before === undefined ? 0 : sc.score - before
-    return { name: sc.subject, score: sc.score, trend, status: subjectStatus(sc.score, trend) }
+    return { name: sc.subject, score: sc.score, trend, status: subjectStatus(sc.score, trend), hasPrevious: before !== undefined }
   })
 }
 

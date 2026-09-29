@@ -32,14 +32,20 @@ export function useNotifications() {
   return { items, unread: items.filter(n => !n.read).length }
 }
 
-/** The signed-in parent, their children, and the child currently in view. */
+/**
+ * The signed-in parent, their children, and the child currently in view.
+ * `canEdit` is false for a child shared by another parent (co-guardian view).
+ */
 export function useParent() {
   const { db, session } = useStore()
   const parent = db.parents.find(p => p.id === session?.userId) ?? null
-  const children = parent ? db.students.filter(s => parent.childIds.includes(s.id)) : []
+  const linked = parent ? db.students.filter(s => parent.childIds.includes(s.id)) : []
+  // Their own children first (oldest first), then children shared with them.
+  const children = [...linked.filter(s => s.parentId === parent?.id), ...linked.filter(s => s.parentId !== parent?.id)]
   const child = children.find(c => c.id === session?.activeChildId) ?? children[0] ?? null
   const actions = child ? db.actions.filter(a => a.studentId === child.id) : []
-  return { parent, children, child, actions }
+  const canEdit = !!child && child.parentId === parent?.id
+  return { parent, children, child, actions, canEdit }
 }
 
 export function useTeacher() {

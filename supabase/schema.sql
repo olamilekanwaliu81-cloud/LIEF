@@ -317,6 +317,49 @@ end $$;
 create trigger on_learner_linked after insert or update of class, school on public.students
   for each row execute function public.notify_learner_linked();
 
+-- Row Level Security decides WHO may update a learner, not WHICH columns:
+-- teachers can't change ownership/privacy, and parents can't edit school data.
+create or replace function public.guard_student_update() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  -- Server functions (claiming with a code, learner task submission) run as the
+  -- table owner and are trusted; only guard edits made by signed-in users.
+  if auth.uid() is null or current_setting('leif.trusted', true) = 'on' then
+    return new;
+  end if;
+
+  if old.parent_id is distinct from auth.uid() then
+    -- Not the child's own parent (i.e. a teacher): ownership and privacy are off-limits.
+    new.parent_id := old.parent_id;
+    new.link_code := old.link_code;
+    new.added_by  := old.added_by;
+    new.privacy   := old.privacy;
+  elsif not old.sample_data then
+    -- The parent, on a record the school manages: school data is read-only.
+    new.scores       := old.scores;
+    new.history      := old.history;
+    new.status       := old.status;
+    new.last_updated := old.last_updated;
+    new.teacher_note := old.teacher_note;
+    new.weaknesses   := old.weaknesses;
+    new.strengths    := old.strengths;
+    new.attendance   := old.attendance;
+    new.assignments  := old.assignments;
+    new.sample_data  := old.sample_data;
+    new.link_code    := old.link_code;
+    new.added_by     := old.added_by;
+  else
+    -- The parent, on a record they manage themselves: they can't fake school status.
+    new.sample_data := true;
+    new.link_code   := old.link_code;
+    new.added_by    := old.added_by;
+  end if;
+  return new;
+end $$;
+
+create trigger on_student_update_guard before update on public.students
+  for each row execute function public.guard_student_update();
+
 -- ── Functions the app calls (checked server-side) ──────────────────────────
 
 -- Teacher sign-in uses school + teacher ID; this resolves the login email.
@@ -397,11 +440,13 @@ begin
   select x into a from jsonb_array_elements(s.assignments) x where x->>'id' = p_assignment;
   if a is null or coalesce((a->>'submitted')::boolean, false) then return to_jsonb(s); end if;
 
+  perform set_config('leif.trusted', 'on', true);
   update students set assignments = (
     select jsonb_agg(case when x->>'id' = p_assignment
       then x || jsonb_build_object('submitted', true, 'submittedAt', to_jsonb(now())) else x end)
     from jsonb_array_elements(s.assignments) x)
   where id = s.id returning * into s;
+  perform set_config('leif.trusted', 'off', true);
 
   child := split_part(s.name, ' ', 1);
   insert into notifications (user_id, kind, title, body, link)
@@ -428,9 +473,11 @@ begin
     and link_code is not null and link_code = upper(trim(p_link));
   if not found then raise exception 'Those codes don’t match a learner waiting to be connected. Check them with your child’s teacher.'; end if;
 
+  perform set_config('leif.trusted', 'on', true);
   update students set parent_id = me.id, link_code = null,
          parent_name = trim(me.first_name || ' ' || me.last_name), parent_phone = me.phone
   where id = s.id;
+  perform set_config('leif.trusted', 'off', true);
 
   insert into learner_pins (student_id, pin)
   values (s.id, lpad((floor(random() * 9000) + 1000)::int::text, 4, '0'))

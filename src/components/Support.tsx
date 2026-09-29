@@ -9,7 +9,7 @@ import type { SupportAction } from '../lib/types'
 import { Button, Callout, Card, Chip, EmptyState, PageHeader, SectionTitle, display, tone, useToast } from './ui'
 
 export default function Support() {
-  const { child, actions } = useParent()
+  const { child, actions, canEdit } = useParent()
   const { startAction, completeAction, removeAction, track } = useStore()
   const params = useParams()
   const navigate = useNavigate()
@@ -108,7 +108,9 @@ export default function Support() {
                       <div className="px-4 pb-4 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
                         <p className="text-sm leading-relaxed" style={{ color: 'var(--foreground)' }}>{action.description}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {current ? (
+                          {!canEdit ? (
+                            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Only {child.parentName || 'the main parent'} can track actions for {firstName}, but you can still try these at home.</p>
+                          ) : current ? (
                             <>
                               <Button size="sm" variant="accent" onClick={() => { completeAction(current.id); track('action_completed', { subject: subject.name, title: action.title }); toast('Marked as done — great work!') }}>
                                 <CheckCircle2 size={13} /> Mark as done
@@ -156,7 +158,13 @@ export default function Support() {
         <aside className="lg:col-span-2 space-y-5">
           <section>
             <SectionTitle icon={<Sprout size={15} />} color="var(--accent)">Your support plan</SectionTitle>
-            {trying.length === 0 && done.length === 0 ? (
+            {!canEdit ? (
+              <Card className="p-4">
+                <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+                  {child.parentName || 'The main parent'} manages {firstName}'s support plan. You can see the guidance and try the actions at home.
+                </p>
+              </Card>
+            ) : trying.length === 0 && done.length === 0 ? (
               <Card className="p-4">
                 <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
                   Choose an action and tap <strong style={{ color: 'var(--foreground)' }}>I'll try this</strong>. LEIF records today's score so you can see whether it improves.

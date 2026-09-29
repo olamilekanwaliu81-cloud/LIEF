@@ -64,7 +64,7 @@ export default function TeacherLayout() {
               </div>
             </div>
           </header>
-          <nav aria-label="Teacher" className="border-b overflow-x-auto" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+          <nav aria-label="Teacher" className="border-b overflow-x-auto relative" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
             <div className="flex px-2 min-w-max">
               {teacherTabs.map(({ id, short, Icon }) => (
                 <NavLink
@@ -79,6 +79,8 @@ export default function TeacherLayout() {
               ))}
             </div>
           </nav>
+          {/* Fade at the right edge hints that the tabs scroll sideways. */}
+          <div aria-hidden className="pointer-events-none absolute right-0 bottom-0 h-[45px] w-10" style={{ background: 'linear-gradient(to right, transparent, var(--card))' }} />
         </div>
 
         <main className="flex-1 pb-16">

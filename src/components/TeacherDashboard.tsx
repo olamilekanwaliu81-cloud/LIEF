@@ -22,7 +22,7 @@ const ATTENDANCE: { key: AttendanceStatus; label: string; name: string; color: s
   { key: 'present', label: 'P', name: 'Present', color: 'var(--accent)' },
   { key: 'late', label: 'L', name: 'Late', color: 'var(--warning-strong)' },
   { key: 'excused', label: 'E', name: 'Excused', color: 'var(--purple)' },
-  { key: 'absent', label: 'A', name: 'Absent', color: 'var(--warning)' },
+  { key: 'absent', label: 'A', name: 'Absent', color: 'var(--danger)' },
 ]
 
 function Avatar({ s, size = 40 }: { s: StudentRecord; size?: number }) {
@@ -393,10 +393,10 @@ export function TeacherStudentDetail() {
         </button>
         <Avatar s={s} size={44} />
         <div className="flex-1 min-w-0">
-          <h1 className="font-black text-xl truncate" style={{ ...display, color: 'var(--primary)' }}>{s.name}</h1>
-          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.class} · {s.id}</p>
+          <h1 className="font-black text-xl leading-tight" style={{ ...display, color: 'var(--primary)' }}>{s.name}</h1>
+          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{s.class} · <span className="font-mono whitespace-nowrap">{s.id}</span></p>
         </div>
-        <Button variant="accent" size="sm" onClick={() => navigate(`/teacher/scores/${s.id}`)}><Upload size={13} /> Update scores</Button>
+        <Button variant="accent" size="sm" className="w-full sm:w-auto" onClick={() => navigate(`/teacher/scores/${s.id}`)}><Upload size={13} /> Update scores</Button>
       </div>
 
       <ParentConnectCard student={s} title="Not connected to a parent yet" />
@@ -418,7 +418,7 @@ export function TeacherStudentDetail() {
             <Phone size={14} style={{ color: 'var(--muted-foreground)' }} />
             <div>
               <p className="text-xs font-bold" style={{ color: 'var(--foreground)' }}>{s.parentName || 'Parent'}</p>
-              {s.parentPhone ? <a href={`tel:${s.parentPhone.replace(/\s/g, '')}`} className="text-xs underline" style={{ color: 'var(--muted-foreground)' }}>{s.parentPhone}</a> : <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Contact via LEIF</p>}
+              {s.parentPhone ? <a href={`tel:${s.parentPhone.replace(/\s/g, '')}`} className="text-xs underline" style={{ color: 'var(--muted-foreground)' }}>{s.parentPhone}</a> : <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>No phone number added</p>}
             </div>
           </div>
 

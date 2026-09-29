@@ -19,7 +19,8 @@ export default function LearnerHome() {
   const done = learner.assignments.filter(a => a.submitted).sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''))
   const next = todo[0]
   const subjects = subjectSummaries(learner)
-  const best = [...subjects].sort((a, b) => b.score - a.score).slice(0, 3)
+  // Only genuine strengths; an encouraging page shouldn't praise a 45.
+  const best = subjects.filter(s => s.score >= 70).sort((a, b) => b.score - a.score).slice(0, 3)
 
   const finish = (id: string, title: string) => {
     submitAssignment(id)
@@ -61,7 +62,9 @@ export default function LearnerHome() {
           </div>
         ) : (
           <Card className="p-2">
-            <EmptyState icon={<PartyPopper size={40} />} title="Everything is done!" body="Your teacher will add new tasks soon. Why not read a book you enjoy?" />
+            {learner.assignments.length === 0
+              ? <EmptyState icon={<CalendarClock size={40} />} title="No tasks yet" body="When your teacher sets work on LEIF, it will show up here. Why not read a book you enjoy?" />
+              : <EmptyState icon={<PartyPopper size={40} />} title="Everything is done!" body="Your teacher will add new tasks soon. Why not read a book you enjoy?" />}
           </Card>
         )}
 

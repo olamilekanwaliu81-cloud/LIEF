@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { BookOpen, ChevronRight, Download, Edit3, Eye, EyeOff, Globe, KeyRound, Lock, LogOut, Mail, Phone, Plus, School, Shield, User, UserPlus, X } from 'lucide-react'
 import { useParent, useStore } from '../lib/store'
+import { DEMO_CHILD_IDS } from '../lib/seed'
 import { ALL_CLASSES, CLASS_GROUPS } from '../data/grades'
 import { Button, Callout, Card, Modal, PageHeader, SectionTitle, SelectField, TextField, Toggle, display, downloadJSON, useToast } from './ui'
 
 export default function Profile() {
-  const { parent, child, actions } = useParent()
+  const { parent, child, actions, canEdit } = useParent()
   const { updatePrivacy, signOut, mode } = useStore()
   const navigate = useNavigate()
   const toast = useToast()
@@ -45,7 +46,13 @@ export default function Profile() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Profile" subtitle={`Manage ${firstName}'s academic profile and privacy settings.`} />
+      <PageHeader title="Profile" subtitle={canEdit ? `Manage ${firstName}'s academic profile and privacy settings.` : `${firstName}'s profile, shared with you by ${child.parentName || 'their parent'}.`} />
+
+      {!canEdit && (
+        <Callout t="info" icon={<Shield size={15} />} title="You're a co-guardian">
+          {child.parentName || 'The main parent'} shared {firstName}'s progress with you. You can view everything; only they can change {firstName}'s details or privacy settings, or remove your access.
+        </Callout>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <div className="space-y-6">
@@ -60,9 +67,11 @@ export default function Profile() {
                 <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>{[child.age && `Age ${child.age}`, child.class].filter(Boolean).join(' · ')}</p>
                 <p className="text-xs mt-1 truncate" style={{ color: 'rgba(255,255,255,0.45)' }}>{child.school || 'School not set'}</p>
               </div>
-              <button onClick={() => setEditChild(true)} aria-label={`Edit ${firstName}'s profile`} className="w-10 h-10 flex items-center justify-center rounded-full shrink-0" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff' }}>
-                <Edit3 size={15} />
-              </button>
+              {canEdit && (
+                <button onClick={() => setEditChild(true)} aria-label={`Edit ${firstName}'s profile`} className="w-10 h-10 flex items-center justify-center rounded-full shrink-0" style={{ background: 'rgba(255,255,255,0.12)', color: '#fff' }}>
+                  <Edit3 size={15} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -72,12 +81,12 @@ export default function Profile() {
               <InfoRow icon={<School size={15} />} label="School" value={child.school || '—'} />
               <InfoRow icon={<BookOpen size={15} />} label="Class" value={child.class} />
               <InfoRow icon={<BookOpen size={15} />} label="Subjects tracked" value={`${child.scores.length} subject${child.scores.length === 1 ? '' : 's'}`} />
-              <InfoRow icon={<User size={15} />} label="Data source" value={child.sampleData ? 'Entered by you' : 'Class teacher'} last />
+              <InfoRow icon={<User size={15} />} label="Data source" value={child.sampleData ? (canEdit ? 'Entered by you' : 'Entered by parent') : 'Class teacher'} last />
             </div>
           </section>
 
           {/* Learner access */}
-          <section>
+          {canEdit && <section>
             <SectionTitle icon={<KeyRound size={15} />}>Learner access</SectionTitle>
             <Card className="p-4 space-y-3">
               <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
@@ -100,12 +109,12 @@ export default function Profile() {
               </div>
               <Button size="sm" variant="secondary" onClick={() => setEditPin(true)}>Change PIN</Button>
             </Card>
-          </section>
+          </section>}
         </div>
 
         <div className="space-y-6">
           {/* Privacy controls */}
-          <section>
+          {canEdit && <section>
             <SectionTitle icon={<Shield size={15} />} color="var(--accent)">Privacy controls</SectionTitle>
             <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
               <div className="p-4" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -178,7 +187,7 @@ export default function Profile() {
                 <ChevronRight size={14} style={{ color: 'var(--muted-foreground)' }} />
               </button>
             </div>
-          </section>
+          </section>}
 
           {/* Parent account */}
           <section>
@@ -202,11 +211,11 @@ export default function Profile() {
             </div>
           </section>
 
-          <Callout t="caution" title="Prototype data">
+          {DEMO_CHILD_IDS.includes(child.id) && <Callout t="caution" title="Prototype data">
             {mode === 'supabase'
               ? 'Your data is stored securely in LEIF’s cloud database and protected by access rules. Demo children like Amara use representative sample data, not real school records.'
               : 'This MVP stores data on this device only. Seeded children like Amara use representative sample data, not real school records.'}
-          </Callout>
+          </Callout>}
         </div>
       </div>
 
